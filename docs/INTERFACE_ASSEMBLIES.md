@@ -1,7 +1,8 @@
 # Exact interface assemblies
 
-Contrainte's interface-assembly kernel places released component occurrences by
-solving equations between exact semantic interface frames. It is the first public
+Contrainte's interface-assembly kernel places released components and explicitly
+protected reference occurrences by solving equations between exact semantic
+interface frames. It is the first public
 design-around primitive: a component can remain fixed while Contrainte searches
 explicitly permitted mating poses for the surrounding components.
 
@@ -36,6 +37,32 @@ documents. That component version is required because every interface has an
 exact frame. An older or future component schema is rejected rather than silently
 assigned version 0.1 semantics.
 
+The hybrid design-around schemas are:
+
+```text
+contrainte.interface-assembly/0.2
+contrainte.interface-assembly-result/0.2
+```
+
+Version 0.2 replaces each occurrence's untagged `component` field with one tagged
+`participant`. A `released_component` retains the complete version 0.3 component
+manifest. A `protected_reference` retains a sealed
+`contrainte.reference-component/0.1`, its sealed design-around request, and its
+independently reproducible projection. The solver normalizes both variants to the
+same bounded interface-only placement view. It does not translate the protected
+reference into a component manifest, artifact set, geometry bound, or B-rep.
+
+Every version 0.2 result contains `assembly_digest`, the canonical SHA-256 digest
+of the complete version 0.2 input. It also contains one canonical
+`participant_evidence` record per occurrence: subject/request/projection digests,
+protected-constraint and unresolved-constraint counts, authority counts, the
+evidence retained for each exposed interface, and the projection's blockers.
+`release_eligible` is always `false`: these fields bind and summarize placement
+evidence; they do not promote it to a component or engineering release. The same
+summary is emitted by the version 0.2 solve and verify CLI paths. Version 0.1
+serialization, result semantics, and CLI output remain unchanged and do not gain
+these fields.
+
 ## Input contract
 
 An input contains:
@@ -46,9 +73,28 @@ An input contains:
 - one or more ranked alternatives for each mate; and
 - an explicit candidate budget.
 
-Each occurrence embeds its complete component manifest. This makes search
-semantics independent of a mutable catalogue lookup. The manifest is defensively
-copied into an immutable snapshot before solving.
+In version 0.1, each occurrence embeds its complete component manifest. In version
+0.2, each occurrence embeds one complete tagged participant. This makes search
+semantics independent of a mutable catalogue lookup. Every document is reparsed
+into an immutable canonical snapshot before solving.
+
+A protected-reference participant must satisfy all of the following before it can
+enter search:
+
+- the reference component, request, and projection content digests reproduce;
+- the request binds the exact reference-component digest;
+- the sealed reference explicitly allows `attach_at_declared_interface` before
+  any requested physical interface can be exposed to a mate;
+- the projection independently replays against that component and request;
+- the outer occurrence ID equals the request and projection occurrence IDs; and
+- only physical interface frames explicitly named by
+  `required_interface_ids` are exposed to mates.
+
+The normalized protected interfaces retain their exact frame, kind, direction,
+medium, properties, source evidence authority, resolution flag, and projection
+blockers. An unrequested physical frame and every datum remain invisible to the
+mate resolver. Observational scan or Gaussian-splat authority therefore remains a
+blocker even when the exact frame equations solve.
 
 Each mate names a `first` and `second` endpoint. An endpoint is an occurrence ID
 plus an interface ID. The two interfaces must have:
@@ -183,7 +229,9 @@ reason.
 The result document does not embed the input document or its digest in version
 0.1. Verification therefore requires both the original input and result files.
 An application that stores them separately must bind both in its own
-content-addressed envelope.
+content-addressed envelope. Version 0.2 closes that identity gap with its required
+`assembly_digest`; verification rejects a result paired with any other canonical
+input while still requiring the input itself for independent replay.
 
 ## CLI
 
@@ -192,6 +240,17 @@ Solve an assembly:
 ```powershell
 python -m contrainte interface-assembly solve interface-assembly.json --output interface-result.json
 ```
+
+The checked-in hybrid example locks a protected existing motor and places one
+released-component participant at its explicitly requested mount:
+
+```powershell
+python -m contrainte interface-assembly solve examples/mixed-reference-motor-interface.json --output artifacts/mixed-reference-motor.result.json
+python -m contrainte interface-assembly verify examples/mixed-reference-motor-interface.json artifacts/mixed-reference-motor.result.json
+```
+
+This example verifies semantic placement and evidence binding only. It does not
+run reference-envelope or B-rep spatial checks.
 
 Replay the result against the original input:
 
@@ -267,6 +326,18 @@ content-addressed occurrence, enumerate only permitted interface alternatives,
 solve this semantic graph, compile the surrounding exact geometry, and run every
 applicable downstream evidence gate. AI may propose alternatives; it cannot
 promote a candidate to verified status.
+
+Version 0.2 makes the protected occurrence native to the semantic graph, but it
+does not yet perform conservative occupied, keepout, access, or service-envelope
+checks. That remains the next separate spatial-evidence gate. It also does not
+interpret electrical property strings as voltage, current, pin, protection, or
+circuit-simulation evidence.
+
+`component-assembly/0.1` accepts only version 0.1 interface assemblies and exact
+local component releases. A version 0.2 occurrence deliberately refuses that
+legacy geometry handoff, including when its participant happens to be a released
+component, so a mixed graph cannot silently bypass the future spatial-evidence
+contract.
 
 For locally derived `component-manifest/0.3` occurrences, the separate
 [`component-assembly/0.1` contract](COMPONENT_ASSEMBLIES.md) performs that next

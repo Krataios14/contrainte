@@ -18,7 +18,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Canonical JSON with stable SHA-256 bundle identifiers.
 - Content-addressed component manifests with typed interfaces, exact rational interface frames, and exact-geometry bounds reproduced from the source B-rep.
 - Exact rational rigid-transform algebra with proper-rotation proofs, composition, inversion, point application, and bounded canonical evidence.
-- Bounded exact interface-assembly search with ranked mating alternatives, cycle closure, explicit inconclusive states, and an independent first-feasible replay oracle.
+- Bounded exact interface-assembly search with ranked mating alternatives, cycle closure, explicit inconclusive states, an independent first-feasible replay oracle, and digest-bound hybrid placement around sealed protected references.
 - Digest-sealed reference components with evidence ceilings, physical frames, occupied/keepout/access/service envelopes, exact mass properties, unknown-field blockers, legal-workflow nonclaims, and independently replayed design-around projections.
 - Evidence-backed material records with density, elasticity, yield, and Poisson claims.
 - A strict prismatic-part feature model with dimensional tolerances, worst-case edge-distance checks, and worst-case hole web checks.
@@ -110,6 +110,23 @@ python -m contrainte interface-assembly verify examples/motor-design-around-inte
 ```
 
 The synthetic example anchors an existing motor and solves compatible mechanical-shaft and DC-link placements around it. Its placeholder artifact digests are deliberately unqualified and are not source evidence. The interface solver is a semantic placement gate, not a collision or physics solver. A production design-around flow must verify each referenced component release and run the resulting poses through exact geometry, tolerance, load, access, manufacturing, and qualification checks.
+
+Use the version 0.2 hybrid contract when the locked occurrence is a sealed
+protected reference rather than an exact local release:
+
+```powershell
+python -m contrainte interface-assembly solve examples/mixed-reference-motor-interface.json --output artifacts/mixed-reference-motor.result.json
+python -m contrainte interface-assembly verify examples/mixed-reference-motor-interface.json artifacts/mixed-reference-motor.result.json
+```
+
+The result binds the complete input digest and exposes only the motor interface
+explicitly requested for design-around and permitted by the sealed reference's
+`attach_at_declared_interface` operation. It carries explicit participant
+constraint, authority, interface-evidence, and blocker summaries while fixing
+`release_eligible` to `false`; successful placement is not a release decision.
+Scan and Gaussian-splat
+authority remains observational. The current hybrid slice does not yet check its
+occupied, keepout, access, or service envelopes against surrounding B-reps.
 
 Compile a solved interface result against B-reps reproduced from actual local component releases:
 
