@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import copy
+import io
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
 from fractions import Fraction
+from pathlib import Path
 from types import MappingProxyType
 from unittest.mock import patch
 
 import contrainte
+from contrainte.canonical import dumps_pretty, loads_strict
+from contrainte.cli import main as cli_main
 from contrainte.errors import InputError
 from contrainte.exact_transform import ExactRigidTransform
 from contrainte.interface_assembly import (
@@ -234,6 +240,79 @@ class InterfaceAssemblyTests(unittest.TestCase):
             contrainte.verify_interface_assembly_result,
             verify_interface_assembly_result,
         )
+
+    def test_cli_solves_and_independently_verifies_result(self) -> None:
+        document = assembly(
+            [
+                occurrence("a", [interface("shaft", "output")], anchor=transform()),
+                occurrence("b", [interface("shaft", "input")]),
+            ],
+            [
+                mate(
+                    "shaft-mate",
+                    ("a", "shaft"),
+                    ("b", "shaft"),
+                    [alternative("direct", 0, transform(5))],
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "assembly.json"
+            result_path = root / "result.json"
+            input_path.write_text(
+                dumps_pretty(document), encoding="utf-8", newline="\n"
+            )
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "interface-assembly",
+                            "solve",
+                            str(input_path),
+                            "--output",
+                            str(result_path),
+                        ]
+                    ),
+                    0,
+                )
+            self.assertEqual(loads_strict(stdout.getvalue())["status"], "solved")
+            self.assertTrue(result_path.is_file())
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "interface-assembly",
+                            "verify",
+                            str(input_path),
+                            str(result_path),
+                        ]
+                    ),
+                    0,
+                )
+            self.assertEqual(loads_strict(stdout.getvalue()), {"status": "verified"})
+
+            tampered = loads_strict(result_path.read_bytes())
+            tampered["occurrence_transforms"][1]["transform"]["translation"]["x"] = "6"
+            result_path.write_text(
+                dumps_pretty(tampered), encoding="utf-8", newline="\n"
+            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "interface-assembly",
+                            "verify",
+                            str(input_path),
+                            str(result_path),
+                        ]
+                    ),
+                    2,
+                )
+            self.assertIn("cannot be reproduced", stderr.getvalue())
 
     def test_two_occurrence_formula_is_exact(self) -> None:
         document = assembly(

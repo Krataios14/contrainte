@@ -4,12 +4,19 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from .agents import provider_inventory
 from .assembly import compile_assembly, load_assembly, verify_assembly_bundle
 from .cad import compile_part, load_part, verify_cad_bundle
-from .canonical import dumps_pretty
-from .errors import ContrainteError
+from .canonical import dumps_pretty, loads_strict
+from .errors import ContrainteError, InputError, IntegrityError
+from .interface_assembly import (
+    InterfaceAssembly,
+    InterfaceAssemblyResult,
+    solve_interface_assembly,
+    verify_interface_assembly_result,
+)
 from .pipeline import (
     compile_bundle,
     load_bundle,
@@ -106,15 +113,11 @@ def _parser() -> argparse.ArgumentParser:
     sketch_parser = subcommands.add_parser(
         "sketch", help="compile and verify constrained sketch extrusions"
     )
-    sketch_commands = sketch_parser.add_subparsers(
-        dest="sketch_command", required=True
-    )
+    sketch_commands = sketch_parser.add_subparsers(dest="sketch_command", required=True)
     sketch_compile = sketch_commands.add_parser(
         "compile", help="solve a constrained polygon profile and extrude it"
     )
-    sketch_compile.add_argument(
-        "input", help="path to a sketch-extrusion JSON file"
-    )
+    sketch_compile.add_argument("input", help="path to a sketch-extrusion JSON file")
     sketch_compile.add_argument(
         "--output-dir", "-o", required=True, help="directory for generated artifacts"
     )
@@ -142,6 +145,28 @@ def _parser() -> argparse.ArgumentParser:
         "verify", help="verify local component artifacts and source CAD evidence"
     )
     component_verify.add_argument("manifest", help="component manifest JSON")
+
+    interface_parser = subcommands.add_parser(
+        "interface-assembly",
+        help="solve and independently verify exact component-interface assemblies",
+    )
+    interface_commands = interface_parser.add_subparsers(
+        dest="interface_assembly_command", required=True
+    )
+    interface_solve = interface_commands.add_parser(
+        "solve", help="search ranked interface mates with exact rigid transforms"
+    )
+    interface_solve.add_argument(
+        "input", help="path to an interface-assembly JSON file"
+    )
+    interface_solve.add_argument("--output", "-o", required=True)
+    interface_verify = interface_commands.add_parser(
+        "verify", help="independently replay an interface-assembly result"
+    )
+    interface_verify.add_argument(
+        "input", help="path to the original interface-assembly JSON file"
+    )
+    interface_verify.add_argument("result", help="path to the result JSON file")
 
     program_parser = subcommands.add_parser(
         "program", help="inspect deterministic design-program graphs"
@@ -174,13 +199,19 @@ def _parser() -> argparse.ArgumentParser:
         "init", help="pin a design program and create or resume a run"
     )
     workspace_init.add_argument("program", help="path to a design-program JSON file")
-    workspace_init.add_argument("--root", "-r", required=True, help="workspace directory")
+    workspace_init.add_argument(
+        "--root", "-r", required=True, help="workspace directory"
+    )
     workspace_init.add_argument("--run-id", help="stable run identifier")
     workspace_status = workspace_commands.add_parser(
         "status", help="show verified run state and ready tasks"
     )
-    workspace_status.add_argument("program", help="path to the pinned program JSON file")
-    workspace_status.add_argument("--root", "-r", required=True, help="workspace directory")
+    workspace_status.add_argument(
+        "program", help="path to the pinned program JSON file"
+    )
+    workspace_status.add_argument(
+        "--root", "-r", required=True, help="workspace directory"
+    )
     workspace_status.add_argument("--run-id", required=True, help="run identifier")
 
     agents_parser = subcommands.add_parser(
@@ -251,9 +282,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 manifest = derive_component_manifest(
                     args.bundle, load_release_request(args.request)
                 )
-                write_component_manifest(
-                    args.output, manifest, bundle_path=args.bundle
-                )
+                write_component_manifest(args.output, manifest, bundle_path=args.bundle)
                 print(manifest.manifest_digest)
                 return 0
             if args.component_command == "verify":
@@ -262,6 +291,41 @@ def main(argv: Sequence[str] | None = None) -> int:
                         verify_local_component_manifest(args.manifest), sort_keys=True
                     )
                 )
+                return 0
+        if args.command == "interface-assembly":
+            assembly = InterfaceAssembly.from_dict(
+                _read_json(args.input, label="interface assembly")
+            )
+            if args.interface_assembly_command == "solve":
+                result = solve_interface_assembly(assembly)
+                output = Path(args.output)
+                try:
+                    output.write_text(
+                        dumps_pretty(result.as_dict()), encoding="utf-8", newline="\n"
+                    )
+                except OSError as exc:
+                    raise InputError(
+                        f"cannot write interface assembly result {output}: {exc}"
+                    ) from exc
+                print(
+                    json.dumps(
+                        {
+                            "status": result.status.value,
+                            "examined_candidates": result.examined_candidates,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0
+            if args.interface_assembly_command == "verify":
+                result = InterfaceAssemblyResult.from_dict(
+                    _read_json(args.result, label="interface assembly result")
+                )
+                if not verify_interface_assembly_result(assembly, result):
+                    raise IntegrityError(
+                        "interface assembly result cannot be reproduced"
+                    )
+                print(json.dumps({"status": "verified"}, sort_keys=True))
                 return 0
         if args.command == "program":
             program = load_program(args.input)
@@ -318,3 +382,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     parser.error(f"unsupported command: {args.command}")
     return 2
+
+
+def _read_json(path: str, *, label: str) -> object:
+    source = Path(path)
+    try:
+        return loads_strict(source.read_bytes())
+    except OSError as exc:
+        raise InputError(f"cannot read {label} {source}: {exc}") from exc
