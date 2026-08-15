@@ -5,6 +5,7 @@ import unittest
 from dataclasses import FrozenInstanceError
 from fractions import Fraction
 
+import contrainte
 from contrainte.errors import InputError
 from contrainte.exact_transform import (
     EXACT_TRANSFORM_SCHEMA,
@@ -61,6 +62,11 @@ def proper_signed_permutations() -> tuple[ExactRotation3, ...]:
 
 
 class ExactRigidTransformTests(unittest.TestCase):
+    def test_exact_transform_types_are_public(self) -> None:
+        self.assertIs(contrainte.ExactVector3, ExactVector3)
+        self.assertIs(contrainte.ExactRotation3, ExactRotation3)
+        self.assertIs(contrainte.ExactRigidTransform, ExactRigidTransform)
+
     def test_hand_calculated_point_application(self) -> None:
         transform = ExactRigidTransform(vector(10, 20, 30), rotation_z_90())
 
