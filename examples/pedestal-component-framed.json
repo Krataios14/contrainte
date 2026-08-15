@@ -1,0 +1,30 @@
+{
+  "schema_version": "contrainte.component-release-request/0.2",
+  "component_id": "component.fixture.framed-demo",
+  "revision": "A",
+  "title": "Geometry-backed fixture with an exact mounting frame",
+  "interfaces": [
+    {
+      "interface_id": "mount",
+      "kind": "mechanical",
+      "direction": "bidirectional",
+      "medium": "bolted_joint",
+      "properties": {"datum": "base"},
+      "frame": {
+        "reference": "engineering_bundle",
+        "unit": "mm",
+        "origin": {"x": "0", "y": "0", "z": "0"},
+        "basis": {
+          "x_axis": {"x": "1", "y": "0", "z": "0"},
+          "y_axis": {"x": "0", "y": "1", "z": "0"},
+          "z_axis": {"x": "0", "y": "0", "z": "1"}
+        }
+      }
+    }
+  ],
+  "capabilities": ["fixture_support"],
+  "metadata": {
+    "data_class": "synthetic",
+    "release_use": "demonstration_only"
+  }
+}
