@@ -18,6 +18,7 @@ from .pipeline import (
     write_bundle,
 )
 from .program import load_program
+from .solid import compile_solid_program, load_solid_program, verify_solid_bundle
 from .workspace import DesignWorkspace
 
 
@@ -74,6 +75,22 @@ def _parser() -> argparse.ArgumentParser:
         "verify", help="reproduce assembly analysis and verify exact artifacts"
     )
     assembly_verify.add_argument("bundle", help="path to an assembly bundle JSON file")
+
+    solid_parser = subcommands.add_parser(
+        "solid", help="compile and verify general exact-solid feature programs"
+    )
+    solid_commands = solid_parser.add_subparsers(dest="solid_command", required=True)
+    solid_compile = solid_commands.add_parser(
+        "compile", help="compile a constrained boolean feature DAG to STEP and STL"
+    )
+    solid_compile.add_argument("input", help="path to a solid-program JSON file")
+    solid_compile.add_argument(
+        "--output-dir", "-o", required=True, help="directory for generated artifacts"
+    )
+    solid_verify = solid_commands.add_parser(
+        "verify", help="rebuild solid analysis and verify every exact artifact"
+    )
+    solid_verify.add_argument("bundle", help="path to a solid bundle JSON file")
 
     program_parser = subcommands.add_parser(
         "program", help="inspect deterministic design-program graphs"
@@ -157,6 +174,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if args.assembly_command == "verify":
                 print(json.dumps(verify_assembly_bundle(args.bundle), sort_keys=True))
+                return 0
+        if args.command == "solid":
+            if args.solid_command == "compile":
+                bundle = compile_solid_program(
+                    load_solid_program(args.input), args.output_dir
+                )
+                print(bundle["digest"])
+                return 0
+            if args.solid_command == "verify":
+                print(json.dumps(verify_solid_bundle(args.bundle), sort_keys=True))
                 return 0
         if args.command == "program":
             program = load_program(args.input)

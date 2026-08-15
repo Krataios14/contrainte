@@ -7,6 +7,7 @@ from .component import ArtifactRef, ComponentInterface, ComponentManifest
 from .materials import MaterialRecord
 from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
+from .solid import SolidProgram
 from .workspace import DesignWorkspace, ObjectRef
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "PartOccurrence",
     "PrismaticPart",
     "RigidTransform",
+    "SolidProgram",
     "ThroughHole",
     "compile_bundle",
     "compile_part",
