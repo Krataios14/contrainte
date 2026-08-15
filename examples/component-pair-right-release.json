@@ -1,0 +1,27 @@
+{
+  "schema_version": "contrainte.component-release-request/0.2",
+  "component_id": "component.plate-right",
+  "revision": "A",
+  "title": "Synthetic right geometry-backed plate",
+  "interfaces": [
+    {
+      "interface_id": "edge-left",
+      "kind": "mechanical",
+      "direction": "bidirectional",
+      "medium": "dry_fixture_gap",
+      "properties": {"standard": "synthetic-edge"},
+      "frame": {
+        "reference": "engineering_bundle",
+        "unit": "mm",
+        "origin": {"x": "-60", "y": "0", "z": "5"},
+        "basis": {
+          "x_axis": {"x": "1", "y": "0", "z": "0"},
+          "y_axis": {"x": "0", "y": "1", "z": "0"},
+          "z_axis": {"x": "0", "y": "0", "z": "1"}
+        }
+      }
+    }
+  ],
+  "capabilities": ["synthetic_fixture"],
+  "metadata": {"data_class": "synthetic", "release_use": "demonstration_only"}
+}

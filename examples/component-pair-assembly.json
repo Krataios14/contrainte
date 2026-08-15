@@ -1,0 +1,30 @@
+{
+  "schema_version": "contrainte.component-assembly/0.1",
+  "assembly_id": "component-pair",
+  "revision": "A",
+  "title": "Exact non-Euler geometry-backed component pair",
+  "interface_assembly": {
+    "locator": "examples/component-pair-interface.json",
+    "file_digest": "sha256:fb0e1aa21f5271ec8ec20fdaeeae822d7206ac5cc4688658803acfb928c11e7c"
+  },
+  "interface_result": {
+    "locator": "examples/component-pair-interface-result.json",
+    "file_digest": "sha256:59ef1323fdc2221c889454bac39975c29990436b9e58613f11c358439abe5ece"
+  },
+  "component_bindings": [
+    {
+      "occurrence_id": "left",
+      "manifest_locator": "artifacts/component-pair-source/left.component.json",
+      "manifest_file_digest": "sha256:a684e6ef90f022bb95a494bc037504bb109cda0740320079f5be31be504c73e1",
+      "manifest_digest": "sha256:3ce803301840c1ecfed588747b44ca8c542cfb0bcf1218cd4276af879d7bf302"
+    },
+    {
+      "occurrence_id": "right",
+      "manifest_locator": "artifacts/component-pair-source/right.component.json",
+      "manifest_file_digest": "sha256:54f3cc133e95eaf1ee46e618b7974070e7408f53b5b3545b8b699c6a4e05adbf",
+      "manifest_digest": "sha256:27af560b655434631428013cab2d220da41f62582d2f32d3b4fc8eed26e8f5b4"
+    }
+  ],
+  "default_minimum_clearance_mm": "5",
+  "pair_clearances": []
+}

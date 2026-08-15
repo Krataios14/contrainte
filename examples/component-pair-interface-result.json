@@ -1,0 +1,73 @@
+{
+  "candidate_budget": 1,
+  "examined_candidates": 1,
+  "occurrence_transforms": [
+    {
+      "occurrence_id": "left",
+      "transform": {
+        "basis": {
+          "x_axis": {
+            "x": "3/5",
+            "y": "4/5",
+            "z": "0"
+          },
+          "y_axis": {
+            "x": "-4/5",
+            "y": "3/5",
+            "z": "0"
+          },
+          "z_axis": {
+            "x": "0",
+            "y": "0",
+            "z": "1"
+          }
+        },
+        "schema_version": "contrainte.exact-rigid-transform/0.1",
+        "translation": {
+          "x": "0",
+          "y": "0",
+          "z": "0"
+        },
+        "unit": "mm"
+      }
+    },
+    {
+      "occurrence_id": "right",
+      "transform": {
+        "basis": {
+          "x_axis": {
+            "x": "3/5",
+            "y": "4/5",
+            "z": "0"
+          },
+          "y_axis": {
+            "x": "-4/5",
+            "y": "3/5",
+            "z": "0"
+          },
+          "z_axis": {
+            "x": "0",
+            "y": "0",
+            "z": "1"
+          }
+        },
+        "schema_version": "contrainte.exact-rigid-transform/0.1",
+        "translation": {
+          "x": "75",
+          "y": "100",
+          "z": "0"
+        },
+        "unit": "mm"
+      }
+    }
+  ],
+  "schema_version": "contrainte.interface-assembly-result/0.1",
+  "selected_alternatives": [
+    {
+      "alternative_id": "five-millimetre-gap",
+      "mate_id": "edge-gap",
+      "preference_rank": 0
+    }
+  ],
+  "status": "solved"
+}

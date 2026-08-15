@@ -1,0 +1,192 @@
+{
+  "schema_version": "contrainte.interface-assembly/0.1",
+  "occurrences": [
+    {
+      "occurrence_id": "left",
+      "anchor_transform": {
+        "schema_version": "contrainte.exact-rigid-transform/0.1",
+        "unit": "mm",
+        "translation": {"x": "0", "y": "0", "z": "0"},
+        "basis": {
+          "x_axis": {"x": "3/5", "y": "4/5", "z": "0"},
+          "y_axis": {"x": "-4/5", "y": "3/5", "z": "0"},
+          "z_axis": {"x": "0", "y": "0", "z": "1"}
+        }
+      },
+      "component": {
+        "schema_version": "contrainte.component-manifest/0.3",
+        "component_id": "component.plate-left",
+        "revision": "A",
+        "title": "Synthetic left geometry-backed plate",
+        "lifecycle_state": "concept",
+        "qualification": "unqualified_demonstration",
+        "source_bundle_digest": "sha256:1c86a297bcd9014eb15cedf04c06277b8dc8eae8cb5c36b486371f3b91e8552e",
+        "artifacts": [
+          {
+            "artifact_id": "engineering-bundle",
+            "role": "engineering_bundle",
+            "media_type": "application/json",
+            "digest": "sha256:1c86a297bcd9014eb15cedf04c06277b8dc8eae8cb5c36b486371f3b91e8552e",
+            "locator": "plate.demo.cad-bundle.json"
+          },
+          {
+            "artifact_id": "exact_geometry-01",
+            "role": "exact_geometry",
+            "media_type": "model/step",
+            "digest": "sha256:cef90835a65060a8dbd2966c4adf2c9085c5834e0f616f82e049b0256eab338d",
+            "locator": "plate.demo.step"
+          },
+          {
+            "artifact_id": "mesh-02",
+            "role": "mesh",
+            "media_type": "model/stl",
+            "digest": "sha256:4436ca5609b85c7d26a6843588e200818c6b76cb6a6f027463155d7e1bebdcf4",
+            "locator": "plate.demo.stl"
+          },
+          {
+            "artifact_id": "drawing-03",
+            "role": "drawing",
+            "media_type": "image/svg+xml",
+            "digest": "sha256:c2f81dc333491bcd952d20aae8ccdfbc6a4b679df77ab33ce08b4e487b38be52",
+            "locator": "plate.demo.svg"
+          }
+        ],
+        "interfaces": [
+          {
+            "interface_id": "edge-right",
+            "kind": "mechanical",
+            "direction": "bidirectional",
+            "medium": "dry_fixture_gap",
+            "properties": {"standard": "synthetic-edge"},
+            "frame": {
+              "reference": "engineering_bundle",
+              "unit": "mm",
+              "origin": {"x": "60", "y": "0", "z": "5"},
+              "basis": {
+                "x_axis": {"x": "1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "1"}
+              }
+            }
+          }
+        ],
+        "capabilities": ["synthetic_fixture"],
+        "geometry_bounds": {
+          "frame": "engineering_bundle",
+          "unit": "mm",
+          "minimum": {"x": "-60", "y": "-40", "z": "0"},
+          "maximum": {"x": "60", "y": "40", "z": "10"}
+        },
+        "metadata": {
+          "component_release_request_content_digest": "sha256:22de3a22ed41e43b2133f98661f87957735a441b5e5e388a3245435b7db44d3e",
+          "data_class": "synthetic",
+          "derivation": "verified_exact_bundle/0.2",
+          "engineering_bundle_content_digest": "sha256:6c1d22b8047b7d562ac33ac054f5f56ab98992d7425c3fffa70fdb35eb255012",
+          "engineering_bundle_schema": "contrainte.cad-bundle/0.1",
+          "release_use": "demonstration_only"
+        }
+      }
+    },
+    {
+      "occurrence_id": "right",
+      "component": {
+        "schema_version": "contrainte.component-manifest/0.3",
+        "component_id": "component.plate-right",
+        "revision": "A",
+        "title": "Synthetic right geometry-backed plate",
+        "lifecycle_state": "concept",
+        "qualification": "unqualified_demonstration",
+        "source_bundle_digest": "sha256:1c86a297bcd9014eb15cedf04c06277b8dc8eae8cb5c36b486371f3b91e8552e",
+        "artifacts": [
+          {
+            "artifact_id": "engineering-bundle",
+            "role": "engineering_bundle",
+            "media_type": "application/json",
+            "digest": "sha256:1c86a297bcd9014eb15cedf04c06277b8dc8eae8cb5c36b486371f3b91e8552e",
+            "locator": "plate.demo.cad-bundle.json"
+          },
+          {
+            "artifact_id": "exact_geometry-01",
+            "role": "exact_geometry",
+            "media_type": "model/step",
+            "digest": "sha256:cef90835a65060a8dbd2966c4adf2c9085c5834e0f616f82e049b0256eab338d",
+            "locator": "plate.demo.step"
+          },
+          {
+            "artifact_id": "mesh-02",
+            "role": "mesh",
+            "media_type": "model/stl",
+            "digest": "sha256:4436ca5609b85c7d26a6843588e200818c6b76cb6a6f027463155d7e1bebdcf4",
+            "locator": "plate.demo.stl"
+          },
+          {
+            "artifact_id": "drawing-03",
+            "role": "drawing",
+            "media_type": "image/svg+xml",
+            "digest": "sha256:c2f81dc333491bcd952d20aae8ccdfbc6a4b679df77ab33ce08b4e487b38be52",
+            "locator": "plate.demo.svg"
+          }
+        ],
+        "interfaces": [
+          {
+            "interface_id": "edge-left",
+            "kind": "mechanical",
+            "direction": "bidirectional",
+            "medium": "dry_fixture_gap",
+            "properties": {"standard": "synthetic-edge"},
+            "frame": {
+              "reference": "engineering_bundle",
+              "unit": "mm",
+              "origin": {"x": "-60", "y": "0", "z": "5"},
+              "basis": {
+                "x_axis": {"x": "1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "1"}
+              }
+            }
+          }
+        ],
+        "capabilities": ["synthetic_fixture"],
+        "geometry_bounds": {
+          "frame": "engineering_bundle",
+          "unit": "mm",
+          "minimum": {"x": "-60", "y": "-40", "z": "0"},
+          "maximum": {"x": "60", "y": "40", "z": "10"}
+        },
+        "metadata": {
+          "component_release_request_content_digest": "sha256:b06d8f71fb3f40fabb0ba15e86c2ff9e90f5769742e20d50e94c3b905519a2f4",
+          "data_class": "synthetic",
+          "derivation": "verified_exact_bundle/0.2",
+          "engineering_bundle_content_digest": "sha256:6c1d22b8047b7d562ac33ac054f5f56ab98992d7425c3fffa70fdb35eb255012",
+          "engineering_bundle_schema": "contrainte.cad-bundle/0.1",
+          "release_use": "demonstration_only"
+        }
+      }
+    }
+  ],
+  "mates": [
+    {
+      "mate_id": "edge-gap",
+      "first": {"occurrence_id": "left", "interface_id": "edge-right"},
+      "second": {"occurrence_id": "right", "interface_id": "edge-left"},
+      "property_keys": ["standard"],
+      "alternatives": [
+        {
+          "alternative_id": "five-millimetre-gap",
+          "preference_rank": 0,
+          "second_interface_in_first_interface": {
+            "schema_version": "contrainte.exact-rigid-transform/0.1",
+            "unit": "mm",
+            "translation": {"x": "5", "y": "0", "z": "0"},
+            "basis": {
+              "x_axis": {"x": "1", "y": "0", "z": "0"},
+              "y_axis": {"x": "0", "y": "1", "z": "0"},
+              "z_axis": {"x": "0", "y": "0", "z": "1"}
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "candidate_budget": 1
+}
