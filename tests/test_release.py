@@ -15,9 +15,13 @@ from contrainte.release import (
     verify_local_component_manifest,
     write_component_manifest,
 )
+from contrainte.sketch import compile_sketch_extrusion, load_sketch_extrusion
 from contrainte.solid import compile_solid_program, load_solid_program
 
 SOLID_EXAMPLE = Path(__file__).parents[1] / "examples" / "pedestal-bracket.json"
+SKETCH_EXAMPLE = (
+    Path(__file__).parents[1] / "examples" / "constrained-pocket-plate.json"
+)
 
 
 class ComponentReleaseTests(unittest.TestCase):
@@ -181,6 +185,44 @@ class ComponentReleaseTests(unittest.TestCase):
             ),
             request,
         )
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_verified_sketch_bundle_derives_geometry_backed_component(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sketch = load_sketch_extrusion(SKETCH_EXAMPLE)
+            compile_sketch_extrusion(sketch, root)
+            bundle_path = root / f"{sketch.part_id}.sketch-bundle.json"
+            manifest = derive_component_manifest(
+                bundle_path,
+                ComponentReleaseRequest.from_dict(self.request_document()),
+            )
+            manifest_path = root / "component.fixture.demo.json"
+            write_component_manifest(
+                manifest_path, manifest, bundle_path=bundle_path
+            )
+
+            report = verify_local_component_manifest(manifest_path)
+
+            self.assertEqual(report["status"], "verified")
+            self.assertEqual(
+                manifest.geometry_bounds.as_dict(),  # type: ignore[union-attr]
+                {
+                    "frame": "engineering_bundle",
+                    "unit": "mm",
+                    "minimum": {"x": "0", "y": "0", "z": "0"},
+                    "maximum": {"x": "100", "y": "60", "z": "10"},
+                },
+            )
+            self.assertEqual(
+                {item.role for item in manifest.artifacts},
+                {
+                    ArtifactRole.ENGINEERING_BUNDLE,
+                    ArtifactRole.EXACT_GEOMETRY,
+                    ArtifactRole.MESH,
+                    ArtifactRole.DRAWING,
+                },
+            )
 
 
 if __name__ == "__main__":

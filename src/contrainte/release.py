@@ -26,6 +26,12 @@ from .component import (
 )
 from .errors import InputError, IntegrityError
 from .geometry import kernel_measurement
+from .sketch import (
+    SKETCH_BUNDLE_SCHEMA,
+    SketchExtrusion,
+    build_sketch_shape,
+    verify_sketch_bundle,
+)
 from .solid import (
     SOLID_BUNDLE_SCHEMA,
     SolidProgram,
@@ -273,6 +279,8 @@ def _verified_bundle_artifacts(
     schema = content.get("schema_version")
     if schema == CAD_BUNDLE_SCHEMA:
         verify_cad_bundle(path)
+    elif schema == SKETCH_BUNDLE_SCHEMA:
+        verify_sketch_bundle(path)
     elif schema == SOLID_BUNDLE_SCHEMA:
         verify_solid_bundle(path)
     elif schema == ASSEMBLY_BUNDLE_SCHEMA:
@@ -318,6 +326,8 @@ def _exact_geometry_bounds(
     content = document["content"]
     if schema == CAD_BUNDLE_SCHEMA:
         shape = build_part_shape(PrismaticPart.from_dict(content["part"]))
+    elif schema == SKETCH_BUNDLE_SCHEMA:
+        shape = build_sketch_shape(SketchExtrusion.from_dict(content["sketch"]))
     elif schema == SOLID_BUNDLE_SCHEMA:
         _, shape = analyze_solid_program(SolidProgram.from_dict(content["program"]))
     elif schema == ASSEMBLY_BUNDLE_SCHEMA:
