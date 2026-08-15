@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import copy
+import ctypes
 import hashlib
 import itertools
 import math
 import os
 import re
+import secrets
 import stat
 import tempfile
 import unicodedata
@@ -15,16 +17,20 @@ from fractions import Fraction
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+if os.name == "nt":
+    from ctypes import wintypes
+
 from .artifacts import package_version
 from .canonical import decimal_text, digest, dumps_pretty, loads_strict
 from .component import COMPONENT_SCHEMA_V3, ArtifactRole, ComponentManifest
-from .errors import ExecutionError, InputError, IntegrityError
+from .errors import ContrainteError, ExecutionError, InputError, IntegrityError
 from .exact_transform import ExactRigidTransform
 from .geometry import normalize_step_occurrence_identifiers
 from .interface_assembly import (
     InterfaceAssembly,
     InterfaceAssemblyResult,
     SolveStatus,
+    solve_interface_assembly,
     verify_interface_assembly_result,
 )
 from .release import reproduce_local_component_shape
@@ -254,6 +260,27 @@ def _read_stable_file(
     actual_digest = _sha256_bytes(captured)
     if expected_digest is not None and actual_digest != expected_digest:
         raise IntegrityError(f"{field} digest mismatch")
+    return captured
+
+
+def _guarded_stable_file(
+    guard: _DirectoryIdentityGuard,
+    path: Path,
+    *,
+    maximum_bytes: int,
+    field: str,
+    expected_digest: str | None = None,
+    error_type: type[InputError | IntegrityError] = InputError,
+) -> bytes:
+    guard.verify()
+    captured = _read_stable_file(
+        path,
+        maximum_bytes=maximum_bytes,
+        field=field,
+        expected_digest=expected_digest,
+        error_type=error_type,
+    )
+    guard.verify()
     return captured
 
 
@@ -620,6 +647,1206 @@ class _LoadedContext:
     source_records: tuple[dict[str, str], ...]
 
 
+@dataclass(slots=True)
+class _DirectoryIdentityGuard:
+    root: Path
+    identities: dict[Path, tuple[int, int, int]]
+
+    @classmethod
+    def create(cls, root: Path) -> _DirectoryIdentityGuard:
+        guard = cls(root, {})
+        guard.bind(root)
+        return guard
+
+    def bind(self, path: Path) -> None:
+        identity = _direct_directory_identity(path)
+        previous = self.identities.setdefault(path, identity)
+        if previous != identity:
+            raise IntegrityError(
+                f"bound directory identity changed during preparation: {path}"
+            )
+
+    def verify(self) -> None:
+        for path, expected in self.identities.items():
+            if _direct_directory_identity(path) != expected:
+                raise IntegrityError(
+                    f"bound directory identity changed during preparation: {path}"
+                )
+
+    def unbind(self, path: Path) -> None:
+        self.identities.pop(path, None)
+
+
+def _prepare_fault_hook(point: str) -> None:
+    """Deterministic no-op seam for pre-I/O race regression tests."""
+
+
+if os.name == "nt":
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    _GENERIC_READ = 0x80000000
+    _GENERIC_WRITE = 0x40000000
+    _DELETE = 0x00010000
+    _FILE_LIST_DIRECTORY = 0x0001
+    _FILE_READ_ATTRIBUTES = 0x0080
+    _FILE_SHARE_READ = 0x00000001
+    _FILE_SHARE_WRITE = 0x00000002
+    _CREATE_NEW = 1
+    _CREATE_ALWAYS = 2
+    _OPEN_EXISTING = 3
+    _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
+    _FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+    _FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+    _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+    _FILE_FLAG_SEQUENTIAL_SCAN = 0x08000000
+    _FILE_BEGIN = 0
+    _FILE_RENAME_INFO_CLASS = 3
+    _FILE_DISPOSITION_INFO_CLASS = 4
+
+    class _WinFileTime(ctypes.Structure):
+        _fields_ = (("low", wintypes.DWORD), ("high", wintypes.DWORD))
+
+    class _WinByHandleInfo(ctypes.Structure):
+        _fields_ = (
+            ("attributes", wintypes.DWORD),
+            ("creation", _WinFileTime),
+            ("access", _WinFileTime),
+            ("write", _WinFileTime),
+            ("volume_serial", wintypes.DWORD),
+            ("size_high", wintypes.DWORD),
+            ("size_low", wintypes.DWORD),
+            ("links", wintypes.DWORD),
+            ("index_high", wintypes.DWORD),
+            ("index_low", wintypes.DWORD),
+        )
+
+    class _WinRenameHeader(ctypes.Structure):
+        _fields_ = (
+            ("replace", wintypes.BOOL),
+            ("root", wintypes.HANDLE),
+            ("name_length", wintypes.DWORD),
+            ("name", wintypes.WCHAR * 1),
+        )
+
+    class _WinDisposition(ctypes.Structure):
+        _fields_ = (("delete", wintypes.BOOL),)
+
+    _KERNEL32.CreateFileW.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    _KERNEL32.CreateFileW.restype = wintypes.HANDLE
+    _KERNEL32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    _KERNEL32.CloseHandle.restype = wintypes.BOOL
+    _KERNEL32.GetFileInformationByHandle.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_WinByHandleInfo),
+    )
+    _KERNEL32.GetFileInformationByHandle.restype = wintypes.BOOL
+    _KERNEL32.GetFinalPathNameByHandleW.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
+    _KERNEL32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+    _KERNEL32.ReadFile.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.LPVOID,
+    )
+    _KERNEL32.ReadFile.restype = wintypes.BOOL
+    _KERNEL32.WriteFile.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPCVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.LPVOID,
+    )
+    _KERNEL32.WriteFile.restype = wintypes.BOOL
+    _KERNEL32.SetFilePointerEx.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_longlong,
+        ctypes.POINTER(ctypes.c_longlong),
+        wintypes.DWORD,
+    )
+    _KERNEL32.SetFilePointerEx.restype = wintypes.BOOL
+    _KERNEL32.FlushFileBuffers.argtypes = (wintypes.HANDLE,)
+    _KERNEL32.FlushFileBuffers.restype = wintypes.BOOL
+    _KERNEL32.SetFileInformationByHandle.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+    )
+    _KERNEL32.SetFileInformationByHandle.restype = wintypes.BOOL
+    _KERNEL32.CreateDirectoryW.argtypes = (wintypes.LPCWSTR, wintypes.LPVOID)
+    _KERNEL32.CreateDirectoryW.restype = wintypes.BOOL
+
+
+def _windows_error(message: str) -> OSError:
+    return OSError(ctypes.get_last_error(), message)
+
+
+def _normal_windows_handle_path(value: str) -> str:
+    if value.startswith("\\\\?\\UNC\\"):
+        value = "\\\\" + value[8:]
+    elif value.startswith("\\\\?\\"):
+        value = value[4:]
+    return os.path.normcase(os.path.abspath(value))
+
+
+def _windows_final_path(handle: int) -> str:
+    size = 512
+    while True:
+        buffer = ctypes.create_unicode_buffer(size)
+        length = _KERNEL32.GetFinalPathNameByHandleW(handle, buffer, size, 0)
+        if length == 0:
+            raise _windows_error("cannot resolve opened handle")
+        if length < size:
+            return _normal_windows_handle_path(buffer.value)
+        size = length + 1
+
+
+def _windows_info(handle: int) -> tuple[int, ...]:
+    value = _WinByHandleInfo()
+    if not _KERNEL32.GetFileInformationByHandle(handle, ctypes.byref(value)):
+        raise _windows_error("cannot inspect opened handle")
+    return (
+        value.attributes,
+        value.volume_serial,
+        value.index_high,
+        value.index_low,
+        value.links,
+        value.size_high,
+        value.size_low,
+        value.creation.high,
+        value.creation.low,
+        value.write.high,
+        value.write.low,
+    )
+
+
+def _windows_open(
+    path: Path,
+    *,
+    directory: bool,
+    create: bool = False,
+    truncate: bool = False,
+    deletable: bool = False,
+) -> int:
+    desired = _FILE_READ_ATTRIBUTES | (_DELETE if deletable else 0)
+    flags = _FILE_FLAG_OPEN_REPARSE_POINT
+    disposition = _OPEN_EXISTING
+    if directory:
+        desired |= _FILE_LIST_DIRECTORY
+        flags |= _FILE_FLAG_BACKUP_SEMANTICS
+    else:
+        desired |= _GENERIC_READ
+        flags |= _FILE_FLAG_SEQUENTIAL_SCAN
+        if create or truncate:
+            desired |= _GENERIC_WRITE
+            disposition = _CREATE_ALWAYS if truncate else _CREATE_NEW
+    handle = _KERNEL32.CreateFileW(
+        str(path),
+        desired,
+        _FILE_SHARE_READ | (_FILE_SHARE_WRITE if directory else 0),
+        None,
+        disposition,
+        flags,
+        None,
+    )
+    if handle == _INVALID_HANDLE_VALUE:
+        raise _windows_error(f"cannot open direct handle: {path}")
+    return int(handle)
+
+
+def _windows_close(handle: int) -> None:
+    if not _KERNEL32.CloseHandle(handle):
+        raise _windows_error("cannot close native handle")
+
+
+def _windows_read(handle: int, maximum_bytes: int) -> bytes:
+    if not _KERNEL32.SetFilePointerEx(handle, 0, None, _FILE_BEGIN):
+        raise _windows_error("cannot rewind opened file")
+    captured = bytearray()
+    while True:
+        block_size = min(1024 * 1024, maximum_bytes + 1 - len(captured))
+        buffer = ctypes.create_string_buffer(block_size)
+        count = wintypes.DWORD()
+        if not _KERNEL32.ReadFile(
+            handle, buffer, block_size, ctypes.byref(count), None
+        ):
+            raise _windows_error("cannot read opened file")
+        if count.value == 0:
+            return bytes(captured)
+        captured.extend(buffer.raw[: count.value])
+        if len(captured) > maximum_bytes:
+            raise InputError("file exceeds its byte limit while reading")
+
+
+def _windows_write(handle: int, value: bytes) -> None:
+    offset = 0
+    while offset < len(value):
+        block = value[offset : offset + 1024 * 1024]
+        buffer = ctypes.create_string_buffer(block)
+        count = wintypes.DWORD()
+        if not _KERNEL32.WriteFile(
+            handle, buffer, len(block), ctypes.byref(count), None
+        ):
+            raise _windows_error("cannot write opened file")
+        if count.value != len(block):
+            raise OSError("native file write was incomplete")
+        offset += count.value
+    if not _KERNEL32.FlushFileBuffers(handle):
+        raise _windows_error("cannot flush opened file")
+
+
+def _windows_rename(handle: int, parent: _BoundDirectory, name: str) -> None:
+    encoded = str(parent.path / name).encode("utf-16-le")
+    size = _WinRenameHeader.name.offset + len(encoded) + ctypes.sizeof(wintypes.WCHAR)
+    buffer = ctypes.create_string_buffer(size)
+    header = _WinRenameHeader.from_buffer(buffer)
+    header.replace = False
+    header.root = 0
+    header.name_length = len(encoded)
+    ctypes.memmove(
+        ctypes.addressof(buffer) + _WinRenameHeader.name.offset, encoded, len(encoded)
+    )
+    if not _KERNEL32.SetFileInformationByHandle(
+        handle, _FILE_RENAME_INFO_CLASS, buffer, size
+    ):
+        raise _windows_error("cannot rename opened transaction entry")
+
+
+def _windows_mark_delete(handle: int) -> None:
+    value = _WinDisposition(True)
+    if not _KERNEL32.SetFileInformationByHandle(
+        handle,
+        _FILE_DISPOSITION_INFO_CLASS,
+        ctypes.byref(value),
+        ctypes.sizeof(value),
+    ):
+        raise _windows_error("cannot delete opened transaction entry")
+
+
+def _posix_named_identity(value: os.stat_result) -> tuple[int, ...]:
+    """Return the identity fields that bind an fd to one visible directory entry."""
+
+    return (value.st_dev, value.st_ino, value.st_mode, value.st_nlink)
+
+
+def _require_posix_named_handle(
+    parent_handle: int,
+    name: str,
+    opened: os.stat_result,
+    *,
+    directory: bool,
+    error_type: type[InputError | IntegrityError],
+    message: str,
+) -> os.stat_result:
+    try:
+        visible = os.stat(name, dir_fd=parent_handle, follow_symlinks=False)
+    except OSError as exc:
+        raise error_type(message) from exc
+    expected_kind = stat.S_ISDIR if directory else stat.S_ISREG
+    if (
+        not expected_kind(opened.st_mode)
+        or not expected_kind(visible.st_mode)
+        or opened.st_nlink < 1
+        or _posix_named_identity(opened) != _posix_named_identity(visible)
+    ):
+        raise error_type(message)
+    return visible
+
+
+@dataclass(slots=True)
+class _BoundDirectory:
+    path: Path
+    handle: int
+    identity: tuple[int, ...]
+    windows: bool
+    parent: _BoundDirectory | None = None
+    closed: bool = False
+
+    @classmethod
+    def open(cls, path: Path, *, deletable: bool = False) -> _BoundDirectory:
+        if os.name == "nt":
+            try:
+                handle = _windows_open(path, directory=True, deletable=deletable)
+            except OSError as exc:
+                raise InputError(
+                    f"cannot open direct directory handle: {path}"
+                ) from exc
+            info = _windows_info(handle)
+            attributes = info[0]
+            expected = _normal_windows_handle_path(str(path))
+            if (
+                not attributes & _FILE_ATTRIBUTE_DIRECTORY
+                or attributes & _FILE_ATTRIBUTE_REPARSE_POINT
+                or _windows_final_path(handle) != expected
+            ):
+                _windows_close(handle)
+                raise InputError(f"directory handle is indirect or misplaced: {path}")
+            return cls(path, handle, info[:4], True)
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        try:
+            handle = os.open(path, flags)
+        except OSError as exc:
+            raise InputError(f"cannot open direct directory handle: {path}") from exc
+        metadata = os.fstat(handle)
+        try:
+            visible = os.stat(path, follow_symlinks=False)
+        except OSError as exc:
+            os.close(handle)
+            raise InputError(f"cannot inspect direct directory handle: {path}") from exc
+        if not stat.S_ISDIR(metadata.st_mode) or _posix_named_identity(
+            metadata
+        ) != _posix_named_identity(visible):
+            os.close(handle)
+            raise InputError(f"directory handle is indirect or misplaced: {path}")
+        return cls(
+            path, handle, (metadata.st_dev, metadata.st_ino, metadata.st_mode), False
+        )
+
+    def child_directory(self, name: str, *, deletable: bool = False) -> _BoundDirectory:
+        _prepare_fault_hook("before_directory_open")
+        self.verify_visible()
+        child_path = self.path / name
+        if self.windows:
+            return _BoundDirectory.open(child_path, deletable=deletable)
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        try:
+            handle = os.open(name, flags, dir_fd=self.handle)
+        except OSError as exc:
+            raise InputError(f"cannot open direct child directory: {name}") from exc
+        metadata = os.fstat(handle)
+        try:
+            _require_posix_named_handle(
+                self.handle,
+                name,
+                metadata,
+                directory=True,
+                error_type=InputError,
+                message=f"child directory handle is misplaced: {name}",
+            )
+            self.verify_visible()
+        except BaseException:
+            os.close(handle)
+            raise
+        return _BoundDirectory(
+            child_path,
+            handle,
+            (metadata.st_dev, metadata.st_ino, metadata.st_mode),
+            False,
+            self,
+        )
+
+    def verify_visible(self) -> None:
+        if self.windows:
+            if _windows_info(self.handle)[:4] != self.identity or _windows_final_path(
+                self.handle
+            ) != _normal_windows_handle_path(str(self.path)):
+                raise IntegrityError("bound directory handle location changed")
+            return
+        opened = os.fstat(self.handle)
+        try:
+            if self.parent is None:
+                visible = os.stat(self.path, follow_symlinks=False)
+                if not stat.S_ISDIR(visible.st_mode) or _posix_named_identity(
+                    visible
+                ) != _posix_named_identity(opened):
+                    raise IntegrityError("bound directory handle location changed")
+            else:
+                self.parent.verify_visible()
+                _require_posix_named_handle(
+                    self.parent.handle,
+                    self.path.name,
+                    opened,
+                    directory=True,
+                    error_type=IntegrityError,
+                    message="bound directory handle location changed",
+                )
+        except OSError as exc:
+            raise IntegrityError("bound directory is no longer visible") from exc
+        if (opened.st_dev, opened.st_ino, opened.st_mode) != self.identity:
+            raise IntegrityError("bound directory handle location changed")
+
+    def create_child_directory(self, name: str) -> _BoundDirectory:
+        _prepare_fault_hook("before_directory_create")
+        self.verify_visible()
+        if self.windows:
+            path = self.path / name
+            if not _KERNEL32.CreateDirectoryW(str(path), None):
+                raise _windows_error(f"cannot create transaction directory: {name}")
+            return self.child_directory(name, deletable=True)
+        try:
+            os.mkdir(name, mode=0o700, dir_fd=self.handle)
+        except OSError as exc:
+            raise InputError(f"cannot create direct child directory: {name}") from exc
+        child = self.child_directory(name)
+        if stat.S_IMODE(os.fstat(child.handle).st_mode) & 0o077:
+            self.delete_child_directory(child)
+            raise IntegrityError("private transaction directory permissions are broad")
+        return child
+
+    def read_file(
+        self,
+        name: str,
+        *,
+        maximum_bytes: int,
+        field: str,
+        expected_digest: str | None = None,
+        error_type: type[InputError | IntegrityError] = InputError,
+    ) -> bytes:
+        retained = _open_retained_bound_file(
+            self,
+            name,
+            maximum_bytes=maximum_bytes,
+            field=field,
+            expected_digest=expected_digest,
+            error_type=error_type,
+        )
+        try:
+            retained.verify_visible()
+            return retained.captured
+        finally:
+            retained.close()
+
+    def write_new_file(self, name: str, captured: bytes, *, field: str) -> None:
+        self.verify_visible()
+        _prepare_fault_hook(f"before_file_create:{field}")
+        self.verify_visible()
+        handle: int | None = None
+        try:
+            if self.windows:
+                handle = _windows_open(self.path / name, directory=False, create=True)
+                before_info = _windows_info(handle)
+                before_path = _windows_final_path(handle)
+                if (
+                    before_info[0]
+                    & (_FILE_ATTRIBUTE_DIRECTORY | _FILE_ATTRIBUTE_REPARSE_POINT)
+                    or before_info[4] != 1
+                    or (before_info[5] << 32) | before_info[6] != 0
+                    or before_path != _normal_windows_handle_path(str(self.path / name))
+                ):
+                    raise IntegrityError(f"{field} handle is misplaced")
+                _windows_write(handle, captured)
+                info = _windows_info(handle)
+                if (
+                    info[:4] != before_info[:4]
+                    or info[4] != 1
+                    or (info[5] << 32) | info[6] != len(captured)
+                ):
+                    raise IntegrityError(f"{field} metadata does not reproduce")
+                reproduced = _windows_read(handle, max(len(captured), 1))
+            else:
+                flags = (
+                    os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+                )
+                handle = os.open(name, flags, 0o600, dir_fd=self.handle)
+                before_metadata = os.fstat(handle)
+                _require_posix_named_handle(
+                    self.handle,
+                    name,
+                    before_metadata,
+                    directory=False,
+                    error_type=IntegrityError,
+                    message=f"{field} handle is misplaced",
+                )
+                if (
+                    not stat.S_ISREG(before_metadata.st_mode)
+                    or before_metadata.st_nlink != 1
+                    or before_metadata.st_size != 0
+                ):
+                    raise IntegrityError(f"{field} handle is misplaced")
+                offset = 0
+                while offset < len(captured):
+                    offset += os.write(handle, captured[offset:])
+                os.fsync(handle)
+                metadata = os.fstat(handle)
+                _require_posix_named_handle(
+                    self.handle,
+                    name,
+                    metadata,
+                    directory=False,
+                    error_type=IntegrityError,
+                    message=f"{field} metadata does not reproduce",
+                )
+                if (
+                    (metadata.st_dev, metadata.st_ino, metadata.st_mode)
+                    != (
+                        before_metadata.st_dev,
+                        before_metadata.st_ino,
+                        before_metadata.st_mode,
+                    )
+                    or metadata.st_nlink != 1
+                    or metadata.st_size != len(captured)
+                ):
+                    raise IntegrityError(f"{field} metadata does not reproduce")
+                os.lseek(handle, 0, os.SEEK_SET)
+                reproduced = b""
+                while len(reproduced) < len(captured):
+                    block = os.read(handle, len(captured) - len(reproduced))
+                    if not block:
+                        break
+                    reproduced += block
+            if reproduced != captured:
+                raise IntegrityError(f"{field} bytes do not reproduce")
+            self.verify_visible()
+        except OSError as exc:
+            raise InputError(f"cannot publish {field}") from exc
+        finally:
+            if handle is not None:
+                _windows_close(handle) if self.windows else os.close(handle)
+
+    def names(self) -> set[str]:
+        _prepare_fault_hook("before_directory_enumeration")
+        if self.windows:
+            self.verify_visible()
+            names = {item.name for item in os.scandir(self.path)}
+            self.verify_visible()
+        else:
+            names = set(os.listdir(self.handle))
+        return names
+
+    def rename_child_handle(self, child: _BoundDirectory, new_name: str) -> None:
+        old_name = child.path.name
+        _prepare_fault_hook(f"before_handle_rename:{old_name}->{new_name}")
+        if self.windows:
+            self.verify_visible()
+            child.verify_visible()
+            _windows_rename(child.handle, self, new_name)
+        else:
+            _require_posix_named_handle(
+                self.handle,
+                old_name,
+                os.fstat(child.handle),
+                directory=True,
+                error_type=IntegrityError,
+                message="transaction directory handle location changed",
+            )
+            os.rename(
+                child.path.name,
+                new_name,
+                src_dir_fd=self.handle,
+                dst_dir_fd=self.handle,
+            )
+        child.path = self.path / new_name
+        _prepare_fault_hook(f"after_handle_rename:{old_name}->{new_name}")
+        if self.windows:
+            child.verify_visible()
+            self.verify_visible()
+        else:
+            _require_posix_named_handle(
+                self.handle,
+                new_name,
+                os.fstat(child.handle),
+                directory=True,
+                error_type=IntegrityError,
+                message="transaction directory handle location changed",
+            )
+
+    def delete_child_file(self, name: str) -> None:
+        _prepare_fault_hook("before_handle_unlink")
+        if self.windows:
+            self.verify_visible()
+            handle = _windows_open(self.path / name, directory=False, deletable=True)
+            try:
+                info = _windows_info(handle)
+                if (
+                    info[0]
+                    & (_FILE_ATTRIBUTE_DIRECTORY | _FILE_ATTRIBUTE_REPARSE_POINT)
+                    or info[4] != 1
+                    or _windows_final_path(handle)
+                    != _normal_windows_handle_path(str(self.path / name))
+                ):
+                    raise IntegrityError("transaction file is indirect or hard-linked")
+                _windows_mark_delete(handle)
+            finally:
+                _windows_close(handle)
+            self.verify_visible()
+        else:
+            handle = os.open(
+                name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self.handle
+            )
+            try:
+                metadata = os.fstat(handle)
+                _require_posix_named_handle(
+                    self.handle,
+                    name,
+                    metadata,
+                    directory=False,
+                    error_type=IntegrityError,
+                    message="transaction file is indirect or hard-linked",
+                )
+                if metadata.st_nlink != 1:
+                    raise IntegrityError("transaction file is indirect or hard-linked")
+                os.unlink(name, dir_fd=self.handle)
+                if os.fstat(handle).st_nlink != 0:
+                    raise IntegrityError("transaction file unlink did not reproduce")
+            finally:
+                os.close(handle)
+
+    def delete_child_directory(self, child: _BoundDirectory) -> None:
+        _prepare_fault_hook("before_handle_rmdir")
+        if self.windows:
+            self.verify_visible()
+            child.verify_visible()
+            _windows_mark_delete(child.handle)
+            child.close()
+            self.verify_visible()
+        else:
+            _require_posix_named_handle(
+                self.handle,
+                child.path.name,
+                os.fstat(child.handle),
+                directory=True,
+                error_type=IntegrityError,
+                message="transaction directory handle location changed",
+            )
+            os.rmdir(child.path.name, dir_fd=self.handle)
+            child.close()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        _windows_close(self.handle) if self.windows else os.close(self.handle)
+        self.closed = True
+
+
+@dataclass(slots=True)
+class _RetainedBoundFile:
+    parent: _BoundDirectory
+    name: str
+    handle: int
+    identity: tuple[int, ...]
+    captured: bytes
+    error_type: type[InputError | IntegrityError]
+    field: str
+    closed: bool = False
+
+    def verify_visible(self) -> None:
+        self.parent.verify_visible()
+        if self.parent.windows:
+            if _windows_info(self.handle) != self.identity or _windows_final_path(
+                self.handle
+            ) != _normal_windows_handle_path(str(self.parent.path / self.name)):
+                raise self.error_type(f"{self.field} changed after capture")
+            return
+        try:
+            opened = os.fstat(self.handle)
+            relative = os.stat(
+                self.name, dir_fd=self.parent.handle, follow_symlinks=False
+            )
+        except OSError as exc:
+            raise self.error_type(f"{self.field} changed after capture") from exc
+        if (
+            _stat_identity(opened) != self.identity
+            or _stat_identity(relative) != self.identity
+        ):
+            raise self.error_type(f"{self.field} changed after capture")
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        _windows_close(self.handle) if self.parent.windows else os.close(self.handle)
+        self.closed = True
+
+
+def _open_retained_bound_file(
+    parent: _BoundDirectory,
+    name: str,
+    *,
+    maximum_bytes: int,
+    field: str,
+    expected_digest: str | None,
+    error_type: type[InputError | IntegrityError],
+) -> _RetainedBoundFile:
+    parent.verify_visible()
+    _prepare_fault_hook(f"before_file_open:{field}")
+    parent.verify_visible()
+    handle: int | None = None
+    success = False
+    try:
+        if parent.windows:
+            handle = _windows_open(parent.path / name, directory=False)
+            before = _windows_info(handle)
+            attributes = before[0]
+            size = (before[5] << 32) | before[6]
+            if attributes & (
+                _FILE_ATTRIBUTE_DIRECTORY | _FILE_ATTRIBUTE_REPARSE_POINT
+            ) or _windows_final_path(handle) != _normal_windows_handle_path(
+                str(parent.path / name)
+            ):
+                raise error_type(f"{field} cannot use links or reparse points")
+            if before[4] != 1:
+                raise error_type(f"{field} cannot be hard-linked")
+            if size > maximum_bytes:
+                raise error_type(f"{field} exceeds its byte limit")
+            captured = _windows_read(handle, maximum_bytes)
+            after = _windows_info(handle)
+            identity = after
+        else:
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+            handle = os.open(name, flags, dir_fd=parent.handle)
+            before_stat = os.fstat(handle)
+            relative_stat = _require_posix_named_handle(
+                parent.handle,
+                name,
+                before_stat,
+                directory=False,
+                error_type=error_type,
+                message=f"{field} cannot use links or reparse points",
+            )
+            if not stat.S_ISREG(before_stat.st_mode) or _stat_identity(
+                before_stat
+            ) != _stat_identity(relative_stat):
+                raise error_type(f"{field} cannot use links or reparse points")
+            if before_stat.st_nlink != 1:
+                raise error_type(f"{field} cannot be hard-linked")
+            if before_stat.st_size > maximum_bytes:
+                raise error_type(f"{field} exceeds its byte limit")
+            captured_array = bytearray()
+            while True:
+                block = os.read(
+                    handle,
+                    min(1024 * 1024, maximum_bytes + 1 - len(captured_array)),
+                )
+                if not block:
+                    break
+                captured_array.extend(block)
+                if len(captured_array) > maximum_bytes:
+                    raise error_type(f"{field} exceeds its byte limit")
+            captured = bytes(captured_array)
+            after_stat = os.fstat(handle)
+            _require_posix_named_handle(
+                parent.handle,
+                name,
+                after_stat,
+                directory=False,
+                error_type=error_type,
+                message=f"{field} changed while it was being read",
+            )
+            after = _stat_identity(after_stat)
+            before = _stat_identity(before_stat)
+            identity = after
+        expected_size = (
+            (before[5] << 32) | before[6] if parent.windows else before_stat.st_size
+        )
+        if before != after or len(captured) != expected_size:
+            raise error_type(f"{field} changed while it was being read")
+        if expected_digest is not None and _sha256_bytes(captured) != expected_digest:
+            raise IntegrityError(f"{field} digest mismatch")
+        retained = _RetainedBoundFile(
+            parent, name, handle, identity, captured, error_type, field
+        )
+        retained.verify_visible()
+        success = True
+        return retained
+    except OSError as exc:
+        if not parent.windows:
+            try:
+                failed_metadata = os.stat(
+                    name, dir_fd=parent.handle, follow_symlinks=False
+                )
+            except OSError:
+                pass
+            else:
+                if stat.S_ISLNK(failed_metadata.st_mode):
+                    raise error_type(
+                        f"{field} cannot use links or reparse points"
+                    ) from exc
+        raise error_type(f"{field} is unavailable") from exc
+    finally:
+        if handle is not None and not success:
+            _windows_close(handle) if parent.windows else os.close(handle)
+
+
+@dataclass(slots=True)
+class _BoundSourceTree:
+    root: _BoundDirectory
+    directories: dict[tuple[str, ...], _BoundDirectory]
+
+    @classmethod
+    def open(cls, root: Path) -> _BoundSourceTree:
+        bound = _BoundDirectory.open(root)
+        return cls(bound, {(): bound})
+
+    def directory(
+        self, parts: tuple[str, ...], *, create: bool = False
+    ) -> _BoundDirectory:
+        current_parts: tuple[str, ...] = ()
+        current = self.root
+        for part in parts:
+            current_parts += (part,)
+            cached = self.directories.get(current_parts)
+            if cached is None:
+                try:
+                    cached = current.child_directory(part)
+                except InputError:
+                    if not create:
+                        raise
+                    cached = current.create_child_directory(part)
+                self.directories[current_parts] = cached
+            current = cached
+        return current
+
+    def read_locator(
+        self,
+        locator: str,
+        *,
+        maximum_bytes: int,
+        field: str,
+        expected_digest: str | None = None,
+    ) -> bytes:
+        parts = PurePosixPath(locator).parts
+        parent = self.directory(tuple(parts[:-1]))
+        return parent.read_file(
+            parts[-1],
+            maximum_bytes=maximum_bytes,
+            field=field,
+            expected_digest=expected_digest,
+        )
+
+    def close(self) -> None:
+        for parts in sorted(self.directories, key=len, reverse=True):
+            self.directories[parts].close()
+
+    def verify_visible(self) -> None:
+        for directory in self.directories.values():
+            directory.verify_visible()
+
+
+def _bound_release_snapshot(
+    tree: _BoundSourceTree, manifest_locator: str
+) -> tuple[ComponentManifest, Any, bytes]:
+    parts = PurePosixPath(manifest_locator).parts
+    parent = tree.directory(tuple(parts[:-1]))
+    manifest_bytes = parent.read_file(
+        parts[-1],
+        maximum_bytes=_MAX_SOURCE_BYTES,
+        field="component manifest",
+    )
+    manifest = ComponentManifest.from_dict(loads_strict(manifest_bytes))
+    if len(manifest.artifacts) > _MAX_RELEASE_ARTIFACTS:
+        raise InputError("component release artifact count exceeds its limit")
+    captured: dict[str, bytes] = {}
+    chain_size = len(manifest_bytes)
+    for artifact in manifest.artifacts:
+        locator = artifact.locator
+        if Path(locator).name != locator or locator in {"", ".", ".."}:
+            raise IntegrityError(
+                "component artifact locator must be one local file name"
+            )
+        if locator in captured:
+            raise IntegrityError("component artifact locators must be unique")
+        maximum = (
+            _MAX_SOURCE_BYTES
+            if artifact.role is ArtifactRole.ENGINEERING_BUNDLE
+            else _MAX_RELEASE_ARTIFACT_BYTES
+        )
+        remaining = _MAX_RELEASE_CHAIN_BYTES - chain_size
+        if remaining <= 0:
+            raise InputError("component release chain exceeds its byte limit")
+        value = parent.read_file(
+            locator,
+            maximum_bytes=min(maximum, remaining),
+            field=f"component release artifact {locator}",
+            expected_digest=artifact.digest,
+        )
+        chain_size += len(value)
+        if chain_size > _MAX_RELEASE_CHAIN_BYTES:
+            raise InputError("component release chain exceeds its byte limit")
+        captured[locator] = value
+    with tempfile.TemporaryDirectory(
+        prefix="contrainte-component-release-"
+    ) as directory:
+        snapshot_root = Path(directory)
+        snapshot_manifest = snapshot_root / parts[-1]
+        snapshot_manifest.write_bytes(manifest_bytes)
+        for locator, value in captured.items():
+            (snapshot_root / locator).write_bytes(value)
+        reproduced_manifest, shape = reproduce_local_component_shape(snapshot_manifest)
+    if reproduced_manifest.as_dict() != manifest.as_dict():
+        raise IntegrityError("component manifest snapshot did not reproduce")
+    return manifest, shape, manifest_bytes
+
+
+def _capture_bound_prepared_set(
+    directory: _BoundDirectory,
+    documents: dict[str, bytes],
+    *,
+    compare: bool,
+    error_type: type[InputError | IntegrityError] = IntegrityError,
+) -> dict[str, bytes]:
+    captured, retained = _capture_bound_prepared_set_retained(
+        directory, documents, compare=compare, error_type=error_type
+    )
+    try:
+        return captured
+    finally:
+        for item in retained:
+            item.close()
+
+
+def _capture_bound_prepared_set_retained(
+    directory: _BoundDirectory,
+    documents: dict[str, bytes],
+    *,
+    compare: bool,
+    error_type: type[InputError | IntegrityError] = IntegrityError,
+) -> tuple[dict[str, bytes], tuple[_RetainedBoundFile, ...]]:
+    if directory.names() != set(documents):
+        raise IntegrityError(
+            "prepared output directory must contain exactly the three prepared files"
+        )
+    captured: dict[str, bytes] = {}
+    retained: list[_RetainedBoundFile] = []
+    try:
+        for name, expected in documents.items():
+            item = _open_retained_bound_file(
+                directory,
+                name,
+                maximum_bytes=_MAX_SOURCE_BYTES,
+                field=f"prepared output {name}",
+                expected_digest=_sha256_bytes(expected) if compare else None,
+                error_type=error_type,
+            )
+            retained.append(item)
+            if compare and item.captured != expected:
+                raise IntegrityError(f"prepared output bytes changed: {name}")
+            captured[name] = item.captured
+        if directory.names() != set(documents):
+            raise IntegrityError("prepared output set changed while it was captured")
+        for item in retained:
+            item.verify_visible()
+        return captured, tuple(retained)
+    except BaseException:
+        for item in retained:
+            item.close()
+        raise
+
+
+def _discard_bound_prepared_directory(
+    parent: _BoundDirectory,
+    directory: _BoundDirectory,
+    expected_names: tuple[str, ...],
+) -> None:
+    names = directory.names()
+    if not names.issubset(set(expected_names)):
+        raise IntegrityError("transaction directory contains foreign entries")
+    for name in sorted(names):
+        directory.delete_child_file(name)
+    parent.delete_child_directory(directory)
+
+
+@dataclass(slots=True)
+class _BoundPreparedTransaction:
+    parent: _BoundDirectory
+    destination: _BoundDirectory
+    stage_name: str
+    destination_name: str
+    backup: _BoundDirectory | None
+    expected_names: tuple[str, ...]
+    previous_documents: dict[str, bytes]
+    active: bool = True
+
+    def rollback(self) -> None:
+        if not self.active:
+            return
+        backup = self.backup
+        try:
+            self.parent.rename_child_handle(self.destination, self.stage_name)
+            if backup is not None:
+                self.parent.rename_child_handle(backup, self.destination_name)
+            _discard_bound_prepared_directory(
+                self.parent, self.destination, self.expected_names
+            )
+            self.active = False
+        finally:
+            if backup is not None:
+                backup.close()
+
+    def commit(
+        self, retained_output_files: tuple[_RetainedBoundFile, ...] = ()
+    ) -> None:
+        if not self.active:
+            return
+        backup = self.backup
+        try:
+            if backup is not None:
+                try:
+                    _discard_bound_prepared_directory(
+                        self.parent, backup, self.expected_names
+                    )
+                except (ContrainteError, OSError) as cleanup_exc:
+                    for retained in retained_output_files:
+                        retained.close()
+                    self._restore_after_backup_cleanup_failure(cleanup_exc)
+            self.active = False
+        finally:
+            if backup is not None:
+                backup.close()
+
+    def _restore_after_backup_cleanup_failure(self, cleanup_exc: Exception) -> None:
+        backup = self.backup
+        if backup is None:
+            raise AssertionError("backup restoration requires a prior directory")
+        restore: _BoundDirectory | None = None
+        try:
+            self.parent.rename_child_handle(self.destination, self.stage_name)
+            restore = backup
+            if backup.closed:
+                restore_name = _unique_transaction_name(
+                    self.parent, f"{self.destination_name}.restore"
+                )
+                restore = self.parent.create_child_directory(restore_name)
+            remaining_names = restore.names()
+            if not remaining_names.issubset(set(self.previous_documents)):
+                raise IntegrityError(
+                    "partially cleaned prepared backup contains foreign entries"
+                )
+            for name in sorted(remaining_names):
+                retained = _open_retained_bound_file(
+                    restore,
+                    name,
+                    maximum_bytes=_MAX_SOURCE_BYTES,
+                    field=f"partially cleaned prepared backup {name}",
+                    expected_digest=None,
+                    error_type=IntegrityError,
+                )
+                try:
+                    if retained.captured != self.previous_documents[name]:
+                        raise IntegrityError(
+                            f"partially cleaned prepared backup changed: {name}"
+                        )
+                finally:
+                    retained.close()
+            for name, captured in self.previous_documents.items():
+                if name not in remaining_names:
+                    restore.write_new_file(
+                        name,
+                        captured,
+                        field=f"restored prepared backup {name}",
+                    )
+            _capture_bound_prepared_set(restore, self.previous_documents, compare=True)
+            self.parent.rename_child_handle(restore, self.destination_name)
+            _discard_bound_prepared_directory(
+                self.parent, self.destination, self.expected_names
+            )
+            self.active = False
+        except (ContrainteError, OSError) as restore_exc:
+            retained_name = (
+                restore.path.name if restore is not None else backup.path.name
+            )
+            if restore is not None and restore is not backup:
+                restore.close()
+            raise IntegrityError(
+                "prepared backup cleanup failed and the prior exact set could not "
+                f"be reconstructed; retained directory: {retained_name}"
+            ) from restore_exc
+        if restore is not None and restore is not backup:
+            restore.close()
+        raise IntegrityError(
+            "prepared backup cleanup failed; the previous exact set was restored"
+        ) from cleanup_exc
+
+
+def _unique_transaction_name(parent: _BoundDirectory, prefix: str) -> str:
+    for _ in range(128):
+        name = f".{prefix}-{secrets.token_hex(12)}"
+        if name not in parent.names():
+            return name
+    raise ExecutionError("cannot allocate a unique transaction directory")
+
+
+def _publish_bound_prepared_set(
+    parent: _BoundDirectory,
+    destination_name: str,
+    documents: dict[str, bytes],
+) -> _BoundPreparedTransaction:
+    expected_names = tuple(documents)
+    parent_names = parent.names()
+    prior: _BoundDirectory | None = None
+    previous_documents: dict[str, bytes] = {}
+    if destination_name in parent_names:
+        prior = parent.child_directory(destination_name, deletable=True)
+        try:
+            existing_names = prior.names()
+            if existing_names not in (set(), set(expected_names)):
+                raise InputError(
+                    "prepared output directory contains a partial set or foreign entries"
+                )
+            if existing_names:
+                previous_documents = _capture_bound_prepared_set(
+                    prior, documents, compare=False, error_type=InputError
+                )
+        except BaseException:
+            prior.close()
+            raise
+    stage_name = _unique_transaction_name(parent, f"{destination_name}.tmp")
+    stage = parent.create_child_directory(stage_name)
+    try:
+        for name, captured in documents.items():
+            stage.write_new_file(name, captured, field=f"staged prepared output {name}")
+        _capture_bound_prepared_set(stage, documents, compare=True)
+    except BaseException:
+        try:
+            _discard_bound_prepared_directory(parent, stage, expected_names)
+        finally:
+            if prior is not None:
+                prior.close()
+        raise
+
+    backup: _BoundDirectory | None = None
+    try:
+        if prior is not None:
+            backup_name = _unique_transaction_name(
+                parent, f"{destination_name}.previous"
+            )
+            try:
+                parent.rename_child_handle(prior, backup_name)
+            except BaseException:
+                if prior.path.name == backup_name:
+                    backup = prior
+                raise
+            backup = prior
+        parent.rename_child_handle(stage, destination_name)
+        _capture_bound_prepared_set(stage, documents, compare=True)
+    except BaseException:
+        try:
+            if stage.path.name == destination_name:
+                parent.rename_child_handle(stage, stage_name)
+            if backup is not None:
+                parent.rename_child_handle(backup, destination_name)
+            _discard_bound_prepared_directory(parent, stage, expected_names)
+        except BaseException as rollback_exc:
+            raise IntegrityError(
+                "prepared output promotion failed and rollback was incomplete"
+            ) from rollback_exc
+        finally:
+            if prior is not None:
+                prior.close()
+        raise
+    return _BoundPreparedTransaction(
+        parent,
+        stage,
+        stage_name,
+        destination_name,
+        backup,
+        expected_names,
+        previous_documents,
+    )
+
+
 def _artifact_specs(assembly_id: str) -> tuple[tuple[str, str, str], ...]:
     return (
         (f"{assembly_id}.step", "model/step", "exact_component_assembly"),
@@ -650,6 +1877,18 @@ def _require_direct_directory(
         raise error_type(f"{field} is unavailable: {exc}") from exc
     if not stat.S_ISDIR(metadata.st_mode):
         raise error_type(f"{field} must be a direct directory")
+
+
+def _direct_directory_identity(path: Path) -> tuple[int, int, int]:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise IntegrityError(f"bound directory is unavailable: {path}") from exc
+    if stat.S_ISLNK(metadata.st_mode) or _is_link_or_reparse(path):
+        raise IntegrityError(f"bound directory became a link or reparse point: {path}")
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise IntegrityError(f"bound directory is no longer a directory: {path}")
+    return metadata.st_dev, metadata.st_ino, metadata.st_mode
 
 
 def _prepare_output_file(path: Path, field: str) -> None:
@@ -729,6 +1968,282 @@ def _publish_captured_file(path: Path, captured: bytes, field: str) -> None:
         raise IntegrityError(f"{field} changed while it was published")
 
 
+def _capture_prepared_set(
+    directory: Path,
+    expected: dict[str, bytes],
+    *,
+    guard: _DirectoryIdentityGuard,
+    error_type: type[InputError | IntegrityError],
+) -> dict[str, bytes]:
+    guard.verify()
+    directory_identity = _direct_directory_identity(directory)
+    _require_direct_directory(
+        directory, field="prepared output directory", error_type=error_type
+    )
+    try:
+        entries = tuple(directory.iterdir())
+    except OSError as exc:
+        raise error_type("prepared output directory is unavailable") from exc
+    if {entry.name for entry in entries} != set(expected):
+        raise error_type(
+            "prepared output directory must contain exactly the three prepared files"
+        )
+    captured: dict[str, bytes] = {}
+    for name, canonical in expected.items():
+        path = directory / name
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise error_type(f"prepared output is unavailable: {name}") from exc
+        if stat.S_ISLNK(metadata.st_mode) or _is_link_or_reparse(path):
+            raise error_type(
+                f"prepared output cannot be a link or reparse point: {name}"
+            )
+        if not stat.S_ISREG(metadata.st_mode):
+            raise error_type(f"prepared output must be a regular file: {name}")
+        if metadata.st_nlink != 1:
+            raise error_type(f"prepared output cannot be hard-linked: {name}")
+        value = _guarded_stable_file(
+            guard,
+            path,
+            maximum_bytes=_MAX_SOURCE_BYTES,
+            field=f"prepared output {name}",
+            expected_digest=_sha256_bytes(canonical),
+            error_type=error_type,
+        )
+        if value != canonical:
+            raise error_type(f"prepared output bytes changed: {name}")
+        if _direct_directory_identity(directory) != directory_identity:
+            raise error_type("prepared output directory identity changed")
+        captured[name] = value
+    guard.verify()
+    return captured
+
+
+def _validate_previous_prepared_set(
+    directory: Path,
+    expected_names: tuple[str, ...],
+    *,
+    guard: _DirectoryIdentityGuard,
+) -> bool:
+    guard.verify()
+    try:
+        metadata = directory.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise InputError("prepared output directory is unavailable") from exc
+    if stat.S_ISLNK(metadata.st_mode) or _is_link_or_reparse(directory):
+        raise InputError("prepared output directory cannot be a link or reparse point")
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise InputError("prepared output path must be a direct directory")
+    directory_identity = _direct_directory_identity(directory)
+    try:
+        entries = tuple(directory.iterdir())
+    except OSError as exc:
+        raise InputError("prepared output directory is unavailable") from exc
+    names = {entry.name for entry in entries}
+    if names not in (set(), set(expected_names)):
+        raise InputError(
+            "prepared output directory contains a partial set or foreign entries"
+        )
+    for entry in entries:
+        try:
+            entry_metadata = entry.lstat()
+        except OSError as exc:
+            raise InputError("prepared output entry is unavailable") from exc
+        if stat.S_ISLNK(entry_metadata.st_mode) or _is_link_or_reparse(entry):
+            raise InputError(
+                "prepared output entries cannot be links or reparse points"
+            )
+        if not stat.S_ISREG(entry_metadata.st_mode):
+            raise InputError("prepared output entries must be regular files")
+        if entry_metadata.st_nlink != 1:
+            raise InputError("prepared output entries cannot be hard-linked")
+        _guarded_stable_file(
+            guard,
+            entry,
+            maximum_bytes=_MAX_SOURCE_BYTES,
+            field=f"existing prepared output {entry.name}",
+        )
+        if _direct_directory_identity(directory) != directory_identity:
+            raise IntegrityError("prepared output directory identity changed")
+    guard.verify()
+    return True
+
+
+def _discard_prepared_directory(
+    directory: Path, expected_names: tuple[str, ...]
+) -> None:
+    try:
+        metadata = directory.lstat()
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(metadata.st_mode) or _is_link_or_reparse(directory):
+        raise IntegrityError("transaction directory became a link or reparse point")
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise IntegrityError("transaction directory is no longer a directory")
+    entries = tuple(directory.iterdir())
+    if not {entry.name for entry in entries}.issubset(set(expected_names)):
+        raise IntegrityError("transaction directory contains foreign entries")
+    for entry in entries:
+        entry_metadata = entry.lstat()
+        if (
+            stat.S_ISLNK(entry_metadata.st_mode)
+            or _is_link_or_reparse(entry)
+            or not stat.S_ISREG(entry_metadata.st_mode)
+            or entry_metadata.st_nlink != 1
+        ):
+            raise IntegrityError("transaction directory contains an unsafe entry")
+        entry.unlink()
+    directory.rmdir()
+
+
+@dataclass(slots=True)
+class _PreparedSetTransaction:
+    destination: Path
+    staged_path: Path
+    backup_path: Path | None
+    expected_names: tuple[str, ...]
+    guard: _DirectoryIdentityGuard
+    active: bool = True
+
+    def rollback(self) -> None:
+        if not self.active:
+            return
+        self.guard.unbind(self.destination)
+        self.guard.verify()
+        failed_path = self.staged_path
+        if failed_path.exists() or _is_link_or_reparse(failed_path):
+            raise IntegrityError("prepared transaction staging path was reused")
+        try:
+            os.replace(self.destination, failed_path)
+            if self.backup_path is not None:
+                os.replace(self.backup_path, self.destination)
+        except OSError as exc:
+            raise IntegrityError(
+                "prepared output transaction could not restore the previous set"
+            ) from exc
+        _discard_prepared_directory(failed_path, self.expected_names)
+        self.guard.verify()
+        self.active = False
+
+    def commit(self) -> None:
+        if not self.active:
+            return
+        self.guard.verify()
+        if self.backup_path is not None:
+            try:
+                _discard_prepared_directory(self.backup_path, self.expected_names)
+            except (OSError, IntegrityError):
+                # The visible exact set is already committed. A raced private
+                # backup is safer left untouched than followed or recursively
+                # removed through an identity that no longer matches.
+                pass
+        self.active = False
+
+
+def _publish_prepared_set(
+    destination: Path,
+    documents: dict[str, bytes],
+    *,
+    guard: _DirectoryIdentityGuard,
+) -> _PreparedSetTransaction:
+    expected_names = tuple(documents)
+    previous_exists = _validate_previous_prepared_set(
+        destination, expected_names, guard=guard
+    )
+    guard.bind(destination.parent)
+    guard.verify()
+    try:
+        staged_path = Path(
+            tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent)
+        )
+        staged_path.chmod(0o700)
+    except OSError as exc:
+        raise InputError(
+            "cannot create private prepared-output staging directory"
+        ) from exc
+    _require_direct_directory(
+        staged_path,
+        field="prepared output staging directory",
+        error_type=IntegrityError,
+    )
+    stage_guard = _DirectoryIdentityGuard.create(staged_path)
+    try:
+        for name, captured in documents.items():
+            guard.verify()
+            stage_guard.verify()
+            _publish_captured_file(
+                staged_path / name,
+                captured,
+                f"staged prepared output {name}",
+            )
+            stage_guard.verify()
+            guard.verify()
+        stage_guard.verify()
+        _capture_prepared_set(
+            staged_path, documents, guard=guard, error_type=IntegrityError
+        )
+        stage_guard.verify()
+    except BaseException:
+        _discard_prepared_directory(staged_path, expected_names)
+        raise
+
+    backup_path: Path | None = None
+    if previous_exists:
+        try:
+            backup_path = Path(
+                tempfile.mkdtemp(
+                    prefix=f".{destination.name}.previous-", dir=destination.parent
+                )
+            )
+            backup_path.rmdir()
+            os.replace(destination, backup_path)
+            guard.verify()
+        except BaseException:
+            try:
+                if (
+                    backup_path is not None
+                    and backup_path.exists()
+                    and not destination.exists()
+                ):
+                    os.replace(backup_path, destination)
+                    guard.verify()
+            except BaseException as rollback_exc:
+                raise IntegrityError(
+                    "prepared output backup promotion failed and rollback was incomplete"
+                ) from rollback_exc
+            _discard_prepared_directory(staged_path, expected_names)
+            raise
+    try:
+        os.replace(staged_path, destination)
+        guard.verify()
+        _capture_prepared_set(
+            destination, documents, guard=guard, error_type=IntegrityError
+        )
+    except BaseException:
+        try:
+            if destination.exists() and not staged_path.exists():
+                os.replace(destination, staged_path)
+            if backup_path is not None:
+                os.replace(backup_path, destination)
+            _discard_prepared_directory(staged_path, expected_names)
+            guard.verify()
+        except BaseException as rollback_exc:
+            raise IntegrityError(
+                "prepared output promotion failed and rollback was incomplete"
+            ) from rollback_exc
+        raise
+    return _PreparedSetTransaction(
+        destination,
+        staged_path,
+        backup_path,
+        expected_names,
+        guard,
+    )
+
+
 def _load_declared_artifacts(
     directory: Path, raw: Any, assembly_id: str
 ) -> tuple[list[dict[str, Any]], dict[str, bytes]]:
@@ -804,6 +2319,522 @@ def load_component_assembly(path: str | Path) -> ComponentAssembly:
         field=f"component assembly {source}",
     )
     return ComponentAssembly.from_dict(loads_strict(raw))
+
+
+def prepare_component_assembly(
+    interface_template_locator: str,
+    assembly_template_locator: str,
+    source_root: str | Path,
+    output_directory: str | Path,
+) -> dict[str, str]:
+    """Bind local releases into canonical, digest-pinned assembly documents.
+
+    Preparation is an authoring operation, not a relaxation of compilation. It
+    consumes the manifest locators from an assembly template, independently
+    reproduces those releases, replaces the interface template's embedded
+    manifests, solves and replays the exact interface problem, and publishes a
+    new strict component assembly that pins every consumed byte snapshot.
+    """
+
+    with localcontext(_EXECUTION_CONTEXT):
+        return _prepare_component_assembly_handle_bound(
+            interface_template_locator,
+            assembly_template_locator,
+            source_root,
+            output_directory,
+        )
+
+
+def _prepare_component_assembly_handle_bound(
+    interface_template_locator: str,
+    assembly_template_locator: str,
+    source_root: str | Path,
+    output_directory: str | Path,
+) -> dict[str, str]:
+    root = _source_root(source_root)
+    tree = _BoundSourceTree.open(root)
+    try:
+        interface_locator = _locator(
+            interface_template_locator, "interface_template_locator"
+        )
+        assembly_locator = _locator(
+            assembly_template_locator, "assembly_template_locator"
+        )
+        interface_template_bytes = tree.read_locator(
+            interface_locator,
+            maximum_bytes=_MAX_SOURCE_BYTES,
+            field="interface assembly template",
+        )
+        assembly_template_bytes = tree.read_locator(
+            assembly_locator,
+            maximum_bytes=_MAX_SOURCE_BYTES,
+            field="component assembly template",
+        )
+        interface_template = InterfaceAssembly.from_dict(
+            loads_strict(interface_template_bytes)
+        )
+        assembly_template = ComponentAssembly.from_dict(
+            loads_strict(assembly_template_bytes)
+        )
+        if assembly_template.interface_assembly.locator != interface_locator:
+            raise InputError(
+                "component assembly template must reference the supplied interface template"
+            )
+        occurrence_ids = tuple(
+            occurrence.occurrence_id for occurrence in interface_template.occurrences
+        )
+        binding_ids = tuple(
+            binding.occurrence_id for binding in assembly_template.component_bindings
+        )
+        if binding_ids != tuple(sorted(occurrence_ids)):
+            raise InputError(
+                "component assembly template bindings must exactly cover interface "
+                "template occurrences"
+            )
+
+        current_manifests: dict[str, ComponentManifest] = {}
+        prepared_bindings: list[dict[str, str]] = []
+        protected_locators = {
+            interface_locator,
+            assembly_locator,
+            assembly_template.interface_result.locator,
+        }
+        for binding in assembly_template.component_bindings:
+            manifest, _, manifest_bytes = _bound_release_snapshot(
+                tree, binding.manifest_locator
+            )
+            if manifest.schema_version != COMPONENT_SCHEMA_V3:
+                raise InputError(
+                    "component assembly preparation requires "
+                    "component-manifest/0.3 releases"
+                )
+            current_manifests[binding.occurrence_id] = manifest
+            protected_locators.add(binding.manifest_locator)
+            manifest_parent = PurePosixPath(binding.manifest_locator).parent
+            protected_locators.update(
+                (manifest_parent / artifact.locator).as_posix()
+                for artifact in manifest.artifacts
+            )
+            prepared_bindings.append(
+                {
+                    "occurrence_id": binding.occurrence_id,
+                    "manifest_locator": binding.manifest_locator,
+                    "manifest_file_digest": _sha256_bytes(manifest_bytes),
+                    "manifest_digest": manifest.manifest_digest,
+                }
+            )
+        tree.verify_visible()
+
+        interface_document = interface_template.as_dict()
+        for occurrence in interface_document["occurrences"]:
+            occurrence["component"] = current_manifests[
+                occurrence["occurrence_id"]
+            ].as_dict()
+        prepared_interface = InterfaceAssembly.from_dict(interface_document)
+        prepared_result = solve_interface_assembly(prepared_interface)
+        if prepared_result.status is not SolveStatus.SOLVED:
+            raise ExecutionError(
+                "prepared interface assembly is not solved: "
+                f"{prepared_result.status.value}"
+            )
+        if not verify_interface_assembly_result(prepared_interface, prepared_result):
+            raise IntegrityError(
+                "prepared interface assembly result does not independently reproduce"
+            )
+
+        output_parts = _bound_output_parts(root, output_directory)
+        output_parent = tree.directory(tuple(output_parts[:-1]), create=True)
+        destination_name = output_parts[-1]
+        relative_directory = PurePosixPath(*output_parts).as_posix()
+        interface_name = f"{assembly_template.assembly_id}.interface.json"
+        result_name = f"{assembly_template.assembly_id}.interface-result.json"
+        assembly_name = f"{assembly_template.assembly_id}.component-assembly.json"
+
+        def output_locator(name: str) -> str:
+            return _locator(f"{relative_directory}/{name}", f"prepared output {name}")
+
+        output_locators = {
+            output_locator(interface_name),
+            output_locator(result_name),
+            output_locator(assembly_name),
+        }
+        if protected_locators & output_locators:
+            raise InputError("prepared outputs cannot overwrite their source inputs")
+        interface_bytes = dumps_pretty(prepared_interface.as_dict()).encode("utf-8")
+        result_bytes = dumps_pretty(prepared_result.as_dict()).encode("utf-8")
+        assembly_document = assembly_template.as_dict()
+        assembly_document["interface_assembly"] = {
+            "locator": output_locator(interface_name),
+            "file_digest": _sha256_bytes(interface_bytes),
+        }
+        assembly_document["interface_result"] = {
+            "locator": output_locator(result_name),
+            "file_digest": _sha256_bytes(result_bytes),
+        }
+        assembly_document["component_bindings"] = prepared_bindings
+        prepared_assembly = ComponentAssembly.from_dict(assembly_document)
+        assembly_bytes = dumps_pretty(prepared_assembly.as_dict()).encode("utf-8")
+        documents = {
+            interface_name: interface_bytes,
+            result_name: result_bytes,
+            assembly_name: assembly_bytes,
+        }
+        if any(len(captured) > _MAX_SOURCE_BYTES for captured in documents.values()):
+            raise ExecutionError("a prepared document exceeds its byte limit")
+
+        transaction = _publish_bound_prepared_set(
+            output_parent, destination_name, documents
+        )
+        tree.directories[tuple(output_parts)] = transaction.destination
+        final_retained: tuple[_RetainedBoundFile, ...] = ()
+        try:
+            tree.verify_visible()
+            first_final = _capture_bound_prepared_set(
+                transaction.destination, documents, compare=True
+            )
+            reloaded = ComponentAssembly.from_dict(
+                loads_strict(first_final[assembly_name])
+            )
+            if reloaded != prepared_assembly:
+                raise IntegrityError(
+                    "prepared component assembly does not strictly reload"
+                )
+            _load_bound_context(reloaded, tree)
+            tree.verify_visible()
+            final, final_retained = _capture_bound_prepared_set_retained(
+                transaction.destination, documents, compare=True
+            )
+            tree.verify_visible()
+            final_interface = InterfaceAssembly.from_dict(
+                loads_strict(final[interface_name])
+            )
+            final_result = InterfaceAssemblyResult.from_dict(
+                loads_strict(final[result_name])
+            )
+            final_assembly = ComponentAssembly.from_dict(
+                loads_strict(final[assembly_name])
+            )
+            if (
+                final_interface != prepared_interface
+                or final_result != prepared_result
+                or final_assembly != prepared_assembly
+            ):
+                raise IntegrityError("final prepared snapshots changed semantically")
+            tree.verify_visible()
+        except BaseException:
+            for item in final_retained:
+                item.close()
+            final_retained = ()
+            transaction.rollback()
+            raise
+        report = {
+            "status": "prepared",
+            "interface_locator": output_locator(interface_name),
+            "interface_file_digest": _sha256_bytes(final[interface_name]),
+            "interface_digest": digest(final_interface.as_dict()),
+            "result_locator": output_locator(result_name),
+            "result_file_digest": _sha256_bytes(final[result_name]),
+            "result_digest": digest(final_result.as_dict()),
+            "assembly_locator": output_locator(assembly_name),
+            "assembly_file_digest": _sha256_bytes(final[assembly_name]),
+            "assembly_digest": final_assembly.assembly_digest,
+        }
+        try:
+            for item in final_retained:
+                item.verify_visible()
+            tree.verify_visible()
+            transaction.commit(final_retained)
+            for item in final_retained:
+                item.verify_visible()
+            tree.verify_visible()
+            return report
+        finally:
+            for item in final_retained:
+                item.close()
+    finally:
+        tree.close()
+
+
+def _bound_output_parts(root: Path, value: str | Path) -> tuple[str, ...]:
+    try:
+        supplied = Path(value)
+    except (TypeError, ValueError) as exc:
+        raise InputError("prepared output directory must be a filesystem path") from exc
+    candidate = supplied if supplied.is_absolute() else root / supplied
+    try:
+        lexical = Path(os.path.abspath(candidate))
+        relative = lexical.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise InputError(
+            "prepared output directory must remain within the source root"
+        ) from exc
+    if not relative.parts:
+        raise InputError("prepared output directory cannot be the source root")
+    _locator(f"{relative.as_posix()}/prepared.json", "prepared output directory")
+    return relative.parts
+
+
+def _load_bound_context(
+    assembly: ComponentAssembly, tree: _BoundSourceTree
+) -> _LoadedContext:
+    interface_bytes = tree.read_locator(
+        assembly.interface_assembly.locator,
+        maximum_bytes=_MAX_SOURCE_BYTES,
+        field="interface assembly source file",
+        expected_digest=assembly.interface_assembly.file_digest,
+    )
+    result_bytes = tree.read_locator(
+        assembly.interface_result.locator,
+        maximum_bytes=_MAX_SOURCE_BYTES,
+        field="interface result source file",
+        expected_digest=assembly.interface_result.file_digest,
+    )
+    interface = InterfaceAssembly.from_dict(loads_strict(interface_bytes))
+    result = InterfaceAssemblyResult.from_dict(loads_strict(result_bytes))
+    if result.status is not SolveStatus.SOLVED:
+        raise InputError("component assembly requires a solved interface result")
+    if not verify_interface_assembly_result(interface, result):
+        raise IntegrityError(
+            "interface assembly result does not independently reproduce"
+        )
+    occurrence_index = {item.occurrence_id: item for item in interface.occurrences}
+    binding_ids = tuple(item.occurrence_id for item in assembly.component_bindings)
+    if binding_ids != tuple(sorted(occurrence_index)):
+        raise InputError("component bindings must exactly cover interface occurrences")
+    shapes: dict[str, Any] = {}
+    source_records: list[dict[str, str]] = []
+    for binding in assembly.component_bindings:
+        manifest, shape, manifest_bytes = _bound_release_snapshot(
+            tree, binding.manifest_locator
+        )
+        if _sha256_bytes(manifest_bytes) != binding.manifest_file_digest:
+            raise IntegrityError("source file digest mismatch")
+        if manifest.schema_version != COMPONENT_SCHEMA_V3:
+            raise InputError(
+                "component assembly requires component-manifest/0.3 releases"
+            )
+        if manifest.manifest_digest != binding.manifest_digest:
+            raise IntegrityError("component binding manifest digest mismatch")
+        embedded = occurrence_index[binding.occurrence_id].component
+        if manifest.as_dict() != embedded.as_dict():
+            raise IntegrityError(
+                "local manifest does not match embedded interface component: "
+                f"{binding.occurrence_id}"
+            )
+        shapes[binding.occurrence_id] = shape
+        source_records.append(
+            {
+                "occurrence_id": binding.occurrence_id,
+                "manifest_locator": binding.manifest_locator,
+                "manifest_file_digest": binding.manifest_file_digest,
+                "manifest_digest": binding.manifest_digest,
+                "source_bundle_digest": manifest.source_bundle_digest,
+            }
+        )
+    return _LoadedContext(interface, result, shapes, tuple(source_records))
+
+
+def _prepare_component_assembly_closed(
+    interface_template_locator: str,
+    assembly_template_locator: str,
+    source_root: str | Path,
+    output_directory: str | Path,
+) -> dict[str, str]:
+    root = _source_root(source_root)
+    guard = _DirectoryIdentityGuard.create(root)
+    interface_locator = _locator(
+        interface_template_locator, "interface_template_locator"
+    )
+    assembly_locator = _locator(assembly_template_locator, "assembly_template_locator")
+    interface_template_path = _resolve_source_file(
+        root, interface_locator, "interface template", guard=guard
+    )
+    assembly_template_path = _resolve_source_file(
+        root, assembly_locator, "component assembly template", guard=guard
+    )
+    interface_template_bytes = _guarded_stable_file(
+        guard,
+        interface_template_path,
+        maximum_bytes=_MAX_SOURCE_BYTES,
+        field="interface assembly template",
+    )
+    assembly_template_bytes = _guarded_stable_file(
+        guard,
+        assembly_template_path,
+        maximum_bytes=_MAX_SOURCE_BYTES,
+        field="component assembly template",
+    )
+    interface_template = InterfaceAssembly.from_dict(
+        loads_strict(interface_template_bytes)
+    )
+    assembly_template = ComponentAssembly.from_dict(
+        loads_strict(assembly_template_bytes)
+    )
+    if assembly_template.interface_assembly.locator != interface_locator:
+        raise InputError(
+            "component assembly template must reference the supplied interface template"
+        )
+
+    occurrence_ids = tuple(
+        occurrence.occurrence_id for occurrence in interface_template.occurrences
+    )
+    binding_ids = tuple(
+        binding.occurrence_id for binding in assembly_template.component_bindings
+    )
+    if binding_ids != tuple(sorted(occurrence_ids)):
+        raise InputError(
+            "component assembly template bindings must exactly cover interface "
+            "template occurrences"
+        )
+
+    current_manifests: dict[str, ComponentManifest] = {}
+    prepared_bindings: list[dict[str, str]] = []
+    protected_inputs = {interface_template_path, assembly_template_path}
+    result_template_path = root.joinpath(
+        *PurePosixPath(assembly_template.interface_result.locator).parts
+    )
+    protected_inputs.add(result_template_path)
+    for binding in assembly_template.component_bindings:
+        manifest_path = _resolve_source_file(
+            root,
+            binding.manifest_locator,
+            f"component binding {binding.occurrence_id}",
+            guard=guard,
+        )
+        manifest_bytes = _guarded_stable_file(
+            guard,
+            manifest_path,
+            maximum_bytes=_MAX_SOURCE_BYTES,
+            field=f"component manifest {binding.occurrence_id}",
+        )
+        manifest, _ = _reproduce_component_from_snapshots(
+            manifest_path, manifest_bytes, guard=guard
+        )
+        if manifest.schema_version != COMPONENT_SCHEMA_V3:
+            raise InputError(
+                "component assembly preparation requires component-manifest/0.3 releases"
+            )
+        current_manifests[binding.occurrence_id] = manifest
+        protected_inputs.add(manifest_path)
+        protected_inputs.update(
+            manifest_path.parent / artifact.locator for artifact in manifest.artifacts
+        )
+        prepared_bindings.append(
+            {
+                "occurrence_id": binding.occurrence_id,
+                "manifest_locator": binding.manifest_locator,
+                "manifest_file_digest": _sha256_bytes(manifest_bytes),
+                "manifest_digest": manifest.manifest_digest,
+            }
+        )
+
+    interface_document = interface_template.as_dict()
+    for occurrence in interface_document["occurrences"]:
+        occurrence["component"] = current_manifests[
+            occurrence["occurrence_id"]
+        ].as_dict()
+    prepared_interface = InterfaceAssembly.from_dict(interface_document)
+    prepared_result = solve_interface_assembly(prepared_interface)
+    if prepared_result.status is not SolveStatus.SOLVED:
+        raise ExecutionError(
+            f"prepared interface assembly is not solved: {prepared_result.status.value}"
+        )
+    if not verify_interface_assembly_result(prepared_interface, prepared_result):
+        raise IntegrityError(
+            "prepared interface assembly result does not independently reproduce"
+        )
+
+    destination = _prepared_destination_within_source_root(
+        root, output_directory, guard=guard
+    )
+    interface_name = f"{assembly_template.assembly_id}.interface.json"
+    result_name = f"{assembly_template.assembly_id}.interface-result.json"
+    assembly_name = f"{assembly_template.assembly_id}.component-assembly.json"
+    output_paths = {
+        "interface": destination / interface_name,
+        "result": destination / result_name,
+        "assembly": destination / assembly_name,
+    }
+    if any(path in protected_inputs for path in output_paths.values()):
+        raise InputError("prepared outputs cannot overwrite their source inputs")
+
+    interface_bytes = dumps_pretty(prepared_interface.as_dict()).encode("utf-8")
+    result_bytes = dumps_pretty(prepared_result.as_dict()).encode("utf-8")
+    relative_directory = destination.relative_to(root).as_posix()
+
+    def output_locator(name: str) -> str:
+        candidate = f"{relative_directory}/{name}" if relative_directory else name
+        return _locator(candidate, f"prepared output {name}")
+
+    assembly_document = assembly_template.as_dict()
+    assembly_document["interface_assembly"] = {
+        "locator": output_locator(interface_name),
+        "file_digest": _sha256_bytes(interface_bytes),
+    }
+    assembly_document["interface_result"] = {
+        "locator": output_locator(result_name),
+        "file_digest": _sha256_bytes(result_bytes),
+    }
+    assembly_document["component_bindings"] = prepared_bindings
+    prepared_assembly = ComponentAssembly.from_dict(assembly_document)
+    assembly_bytes = dumps_pretty(prepared_assembly.as_dict()).encode("utf-8")
+    for label, captured in (
+        ("interface assembly", interface_bytes),
+        ("interface result", result_bytes),
+        ("component assembly", assembly_bytes),
+    ):
+        if len(captured) > _MAX_SOURCE_BYTES:
+            raise ExecutionError(f"prepared {label} exceeds its byte limit")
+    documents = {
+        interface_name: interface_bytes,
+        result_name: result_bytes,
+        assembly_name: assembly_bytes,
+    }
+    transaction = _publish_prepared_set(destination, documents, guard=guard)
+    try:
+        first_final = _capture_prepared_set(
+            destination, documents, guard=guard, error_type=IntegrityError
+        )
+        reloaded = ComponentAssembly.from_dict(loads_strict(first_final[assembly_name]))
+        if reloaded != prepared_assembly:
+            raise IntegrityError("prepared component assembly does not strictly reload")
+        _load_context(reloaded, root, guard=guard)
+        final = _capture_prepared_set(
+            destination, documents, guard=guard, error_type=IntegrityError
+        )
+        final_interface = InterfaceAssembly.from_dict(
+            loads_strict(final[interface_name])
+        )
+        final_result = InterfaceAssemblyResult.from_dict(
+            loads_strict(final[result_name])
+        )
+        final_assembly = ComponentAssembly.from_dict(loads_strict(final[assembly_name]))
+        if (
+            final_interface != prepared_interface
+            or final_result != prepared_result
+            or final_assembly != prepared_assembly
+        ):
+            raise IntegrityError("final prepared snapshots changed semantically")
+    except BaseException:
+        transaction.rollback()
+        raise
+    try:
+        transaction.commit()
+    except BaseException:
+        transaction.rollback()
+        raise
+    return {
+        "status": "prepared",
+        "interface_locator": output_locator(interface_name),
+        "interface_file_digest": _sha256_bytes(final[interface_name]),
+        "interface_digest": digest(final_interface.as_dict()),
+        "result_locator": output_locator(result_name),
+        "result_file_digest": _sha256_bytes(final[result_name]),
+        "result_digest": digest(final_result.as_dict()),
+        "assembly_locator": output_locator(assembly_name),
+        "assembly_file_digest": _sha256_bytes(final[assembly_name]),
+        "assembly_digest": final_assembly.assembly_digest,
+    }
 
 
 def compile_component_assembly(
@@ -960,23 +2991,34 @@ def _verify_component_assembly_bundle_closed(
 
 
 def _load_context(
-    assembly: ComponentAssembly, source_root: str | Path
+    assembly: ComponentAssembly,
+    source_root: str | Path,
+    *,
+    guard: _DirectoryIdentityGuard | None = None,
 ) -> _LoadedContext:
     root = _source_root(source_root)
+    if guard is not None:
+        if root != guard.root:
+            raise IntegrityError("component assembly source root identity changed")
+        guard.verify()
     interface_path = _resolve_source_file(
-        root, assembly.interface_assembly.locator, "interface_assembly"
+        root,
+        assembly.interface_assembly.locator,
+        "interface_assembly",
+        guard=guard,
     )
     result_path = _resolve_source_file(
-        root, assembly.interface_result.locator, "interface_result"
+        root, assembly.interface_result.locator, "interface_result", guard=guard
     )
-    interface_bytes = _read_stable_file(
-        interface_path,
+    read_source = _read_stable_file if guard is None else _guarded_stable_file
+    interface_bytes = read_source(
+        *((guard, interface_path) if guard is not None else (interface_path,)),
         maximum_bytes=_MAX_SOURCE_BYTES,
         field="interface assembly source file",
         expected_digest=assembly.interface_assembly.file_digest,
     )
-    result_bytes = _read_stable_file(
-        result_path,
+    result_bytes = read_source(
+        *((guard, result_path) if guard is not None else (result_path,)),
         maximum_bytes=_MAX_SOURCE_BYTES,
         field="interface result source file",
         expected_digest=assembly.interface_result.file_digest,
@@ -1000,14 +3042,17 @@ def _load_context(
             root,
             binding.manifest_locator,
             f"component_bindings.{binding.occurrence_id}",
+            guard=guard,
         )
-        manifest_bytes = _read_stable_file(
-            path,
+        manifest_bytes = read_source(
+            *((guard, path) if guard is not None else (path,)),
             maximum_bytes=_MAX_SOURCE_BYTES,
             field="source file",
             expected_digest=binding.manifest_file_digest,
         )
-        manifest, shape = _reproduce_component_from_snapshots(path, manifest_bytes)
+        manifest, shape = _reproduce_component_from_snapshots(
+            path, manifest_bytes, guard=guard
+        )
         if manifest.schema_version != COMPONENT_SCHEMA_V3:
             raise InputError(
                 "component assembly requires component-manifest/0.3 releases"
@@ -1030,6 +3075,8 @@ def _load_context(
                 "source_bundle_digest": manifest.source_bundle_digest,
             }
         )
+    if guard is not None:
+        guard.verify()
     return _LoadedContext(
         interface_assembly=interface,
         interface_result=result,
@@ -1055,13 +3102,76 @@ def _source_root(value: str | Path) -> Path:
     return root
 
 
-def _resolve_source_file(root: Path, locator: str, field: str) -> Path:
+def _prepared_destination_within_source_root(
+    root: Path,
+    value: str | Path,
+    *,
+    guard: _DirectoryIdentityGuard,
+) -> Path:
+    try:
+        supplied = Path(value)
+    except (TypeError, ValueError) as exc:
+        raise InputError("prepared output directory must be a filesystem path") from exc
+    candidate = supplied if supplied.is_absolute() else root / supplied
+    try:
+        lexical = Path(os.path.abspath(candidate))
+        relative = lexical.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise InputError(
+            "prepared output directory must remain within the source root"
+        ) from exc
+    sentinel = (
+        f"{relative.as_posix()}/prepared.json" if relative.parts else "prepared.json"
+    )
+    _locator(sentinel, "prepared output directory")
+    if not relative.parts:
+        raise InputError("prepared output directory cannot be the source root")
+
+    current = root
+    for part in relative.parts[:-1]:
+        guard.verify()
+        current /= part
+        if _is_link_or_reparse(current):
+            raise InputError(
+                "prepared output directory cannot traverse a link or reparse point"
+            )
+        try:
+            current.mkdir()
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise InputError(
+                f"cannot create prepared output directory {current}: {exc}"
+            ) from exc
+        _require_direct_directory(
+            current, field="prepared output directory", error_type=InputError
+        )
+        guard.bind(current)
+        guard.verify()
+    destination = current / relative.parts[-1]
+    if _is_link_or_reparse(destination):
+        raise InputError("prepared output directory cannot be a link or reparse point")
+    guard.verify()
+    return destination
+
+
+def _resolve_source_file(
+    root: Path,
+    locator: str,
+    field: str,
+    *,
+    guard: _DirectoryIdentityGuard | None = None,
+) -> Path:
     relative = PurePosixPath(locator)
     current = root
-    for part in relative.parts:
+    if guard is not None:
+        guard.verify()
+    for index, part in enumerate(relative.parts):
         current = current / part
         if _is_link_or_reparse(current):
             raise InputError(f"{field} cannot traverse a link or reparse point")
+        if guard is not None and index < len(relative.parts) - 1:
+            guard.bind(current)
     try:
         resolved = current.resolve(strict=True)
         resolved.relative_to(root)
@@ -1076,6 +3186,8 @@ def _resolve_source_file(root: Path, locator: str, field: str) -> Path:
         raise InputError(f"{field} cannot use a hard-linked file")
     if stat_result.st_size > _MAX_SOURCE_BYTES:
         raise InputError(f"{field} exceeds the source file size limit")
+    if guard is not None:
+        guard.verify()
     return resolved
 
 
@@ -1112,8 +3224,14 @@ def _release_artifact_preflight(path: Path, locator: str, maximum_bytes: int) ->
 
 
 def _reproduce_component_from_snapshots(
-    manifest_path: Path, manifest_bytes: bytes
+    manifest_path: Path,
+    manifest_bytes: bytes,
+    *,
+    guard: _DirectoryIdentityGuard | None = None,
 ) -> tuple[ComponentManifest, Any]:
+    if guard is not None:
+        guard.bind(manifest_path.parent)
+        guard.verify()
     manifest = ComponentManifest.from_dict(loads_strict(manifest_bytes))
     if len(manifest.artifacts) > _MAX_RELEASE_ARTIFACTS:
         raise InputError("component release artifact count exceeds its limit")
@@ -1133,7 +3251,11 @@ def _reproduce_component_from_snapshots(
             if artifact.role is ArtifactRole.ENGINEERING_BUNDLE
             else _MAX_RELEASE_ARTIFACT_BYTES
         )
+        if guard is not None:
+            guard.verify()
         size = _release_artifact_preflight(candidate, locator, maximum)
+        if guard is not None:
+            guard.verify()
         chain_size += size
         if chain_size > _MAX_RELEASE_CHAIN_BYTES:
             raise InputError("component release chain exceeds its byte limit")
@@ -1142,12 +3264,21 @@ def _reproduce_component_from_snapshots(
     captured: dict[str, bytes] = {}
     remaining = _MAX_RELEASE_CHAIN_BYTES - len(manifest_bytes)
     for locator, (candidate, maximum, expected_digest) in artifact_paths.items():
-        value = _read_stable_file(
-            candidate,
-            maximum_bytes=min(maximum, remaining),
-            field=f"component release artifact {locator}",
-            expected_digest=expected_digest,
-        )
+        if guard is None:
+            value = _read_stable_file(
+                candidate,
+                maximum_bytes=min(maximum, remaining),
+                field=f"component release artifact {locator}",
+                expected_digest=expected_digest,
+            )
+        else:
+            value = _guarded_stable_file(
+                guard,
+                candidate,
+                maximum_bytes=min(maximum, remaining),
+                field=f"component release artifact {locator}",
+                expected_digest=expected_digest,
+            )
         captured[locator] = value
         remaining -= len(value)
     with tempfile.TemporaryDirectory(
@@ -1161,6 +3292,8 @@ def _reproduce_component_from_snapshots(
         reproduced_manifest, shape = reproduce_local_component_shape(snapshot_manifest)
     if reproduced_manifest.as_dict() != manifest.as_dict():
         raise IntegrityError("component manifest snapshot did not reproduce")
+    if guard is not None:
+        guard.verify()
     return manifest, shape
 
 
