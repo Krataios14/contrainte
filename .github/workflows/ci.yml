@@ -30,3 +30,7 @@ jobs:
         run: |
           python -m contrainte assembly compile examples/plate-pair-assembly.json --output-dir artifacts/plate-pair
           python -m contrainte assembly verify artifacts/plate-pair/assembly.plate-pair.assembly-bundle.json
+      - name: Exercise exact solid CLI
+        run: |
+          python -m contrainte solid compile examples/pedestal-bracket.json --output-dir artifacts/pedestal-bracket
+          python -m contrainte solid verify artifacts/pedestal-bracket/bracket.demo.solid-bundle.json
