@@ -124,6 +124,24 @@ class ComponentAssemblyTests(unittest.TestCase):
             verify_component_assembly_bundle,
         )
 
+    def test_prepare_dispatches_only_to_handle_bound_implementation(self) -> None:
+        expected = {"status": "prepared"}
+        self.assertFalse(
+            hasattr(component_assembly_module, "_prepare_component_assembly_closed")
+        )
+        with patch.object(
+            component_assembly_module,
+            "_prepare_component_assembly_handle_bound",
+            return_value=expected,
+        ) as implementation:
+            actual = prepare_component_assembly(
+                "interface.json", "assembly.json", "sources", "prepared"
+            )
+        self.assertIs(actual, expected)
+        implementation.assert_called_once_with(
+            "interface.json", "assembly.json", "sources", "prepared"
+        )
+
     def _fixture(
         self,
         root: Path,
