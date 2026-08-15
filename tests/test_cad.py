@@ -69,6 +69,18 @@ class ConstrainedCadTests(unittest.TestCase):
                 verify_cad_bundle(bundle_path)["bundle_digest"], bundle["digest"]
             )
 
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_opencascade_exports_are_reproducible(self) -> None:
+        part = load_part(EXAMPLE)
+        with (
+            tempfile.TemporaryDirectory() as first_directory,
+            tempfile.TemporaryDirectory() as second_directory,
+        ):
+            first = compile_part(part, first_directory)
+            second = compile_part(part, second_directory)
+
+            self.assertEqual(first, second)
+
 
 if __name__ == "__main__":
     unittest.main()
