@@ -52,6 +52,10 @@ Artifact locators are retrieval hints, not identities. A locator may be a reposi
 
 The `engineering_bundle` artifact matching `source_bundle_digest` is mandatory. Exact geometry, drawings, meshes, scenes, material records, solver capsules, and test records are added as separate artifacts when available.
 
+For a locally derived component, `source_bundle_digest` is the SHA-256 of the serialized engineering-bundle file. The bundle's canonical semantic digest is retained separately as `metadata.engineering_bundle_content_digest`. This distinction lets a consumer prove both the exact retrieved bytes and the canonical engineering content they contain.
+
+`contrainte component derive` accepts only a verified CAD, solid, or assembly bundle. It always emits `lifecycle_state=concept` and `qualification=unqualified_demonstration`; neither can be supplied by the request. It carries every bundle artifact into the manifest and writes repository-local locators only when the manifest is beside the bundle. `contrainte component verify` re-runs the source bundle verifier, checks every byte digest, rejects path traversal, rejects missing geometry, and detects lifecycle or qualification promotion.
+
 ## Interfaces
 
 Interfaces describe where a component connects to its environment. Kinds are mechanical, material, electrical, utility, control, safety, and spatial. Directions are input, output, or bidirectional.

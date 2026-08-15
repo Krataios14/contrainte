@@ -1,0 +1,20 @@
+{
+  "schema_version": "contrainte.component-release-request/0.1",
+  "component_id": "component.fixture.demo",
+  "revision": "A",
+  "title": "Geometry-backed demonstration fixture",
+  "interfaces": [
+    {
+      "interface_id": "mount",
+      "kind": "mechanical",
+      "direction": "bidirectional",
+      "medium": "bolted_joint",
+      "properties": {"datum": "base"}
+    }
+  ],
+  "capabilities": ["fixture_support"],
+  "metadata": {
+    "data_class": "synthetic",
+    "release_use": "demonstration_only"
+  }
+}

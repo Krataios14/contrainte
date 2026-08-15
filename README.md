@@ -63,6 +63,13 @@ python -m contrainte solid compile examples/pedestal-bracket.json --output-dir a
 python -m contrainte solid verify artifacts/pedestal-bracket/bracket.demo.solid-bundle.json
 ```
 
+Derive an explicitly unqualified component manifest that pins the exact bundle and every local artifact, then verify the complete chain:
+
+```powershell
+python -m contrainte component derive artifacts/pedestal-bracket/bracket.demo.solid-bundle.json examples/pedestal-component.json --output artifacts/pedestal-bracket/component.fixture.demo.json
+python -m contrainte component verify artifacts/pedestal-bracket/component.fixture.demo.json
+```
+
 Inspect a design program and initialize durable state:
 
 ```powershell
