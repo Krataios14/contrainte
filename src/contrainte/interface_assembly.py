@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import re
 from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
@@ -9,6 +10,7 @@ from fractions import Fraction
 from types import MappingProxyType
 from typing import Any
 
+from .canonical import digest
 from .component import (
     COMPONENT_SCHEMA_V3,
     ArtifactRef,
@@ -29,9 +31,37 @@ from .exact_transform import (
     ExactRotation3,
     ExactVector3,
 )
+from .reference_component import (
+    AllowedOperation,
+    ClearanceRequirement,
+    ConstraintKind,
+    DesignAroundProjection,
+    DesignAroundRequest,
+    DesignDomain,
+    EnvelopePurpose,
+    EvidenceAuthority,
+    EvidenceGate,
+    EvidenceKind,
+    EvidenceRecord,
+    ExactBox,
+    FlexibleDesignBinding,
+    FrameRole,
+    GateDisposition,
+    GateName,
+    KnownField,
+    MassProperties,
+    ProjectedConstraint,
+    ReferenceComponentManifest,
+    ReferenceFrame,
+    SpatialEnvelope,
+    UnknownField,
+    verify_design_around_projection,
+)
 
 INTERFACE_ASSEMBLY_SCHEMA = "contrainte.interface-assembly/0.1"
 INTERFACE_ASSEMBLY_RESULT_SCHEMA = "contrainte.interface-assembly-result/0.1"
+INTERFACE_ASSEMBLY_SCHEMA_V2 = "contrainte.interface-assembly/0.2"
+INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2 = "contrainte.interface-assembly-result/0.2"
 
 MAX_OCCURRENCES = 128
 MAX_MATES = 256
@@ -50,8 +80,10 @@ MAX_IDENTIFIER_CHARACTERS = 128
 MAX_JSON_STRING_CHARACTERS = 4_096
 MAX_JSON_NODES = 50_000
 MAX_JSON_DEPTH = 32
+MAX_JSON_INTEGER_BITS = 64
 MAX_PREFERENCE_RANK = 1_000_000_000
 _MAPPING_PROXY_TYPE = type(MappingProxyType({}))
+_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class SolveStatus(str, Enum):
@@ -64,6 +96,11 @@ class InconclusiveReason(str, Enum):
     CANDIDATE_BUDGET_EXHAUSTED = "candidate_budget_exhausted"
     EXACT_SCALAR_LIMIT = "exact_scalar_limit"
     WORK_BUDGET_EXHAUSTED = "work_budget_exhausted"
+
+
+class ParticipantKind(str, Enum):
+    RELEASED_COMPONENT = "released_component"
+    PROTECTED_REFERENCE = "protected_reference"
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +178,257 @@ class InterfaceOccurrence:
         document: dict[str, Any] = {
             "occurrence_id": self.occurrence_id,
             "component": self.component.as_dict(),
+        }
+        if self.anchor_transform is not None:
+            document["anchor_transform"] = self.anchor_transform.as_dict()
+        return document
+
+
+@dataclass(frozen=True, slots=True)
+class ReleasedComponentParticipant:
+    """A v0.2 participant backed by a complete released-component snapshot."""
+
+    component: ComponentManifest
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("ReleasedComponentParticipant may not be subclassed")
+
+    def __post_init__(self) -> None:
+        if type(self.component) is not ComponentManifest:
+            raise InputError(
+                "released_component participant requires an exact ComponentManifest"
+            )
+
+    @property
+    def kind(self) -> ParticipantKind:
+        return ParticipantKind.RELEASED_COMPONENT
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> ReleasedComponentParticipant:
+        values = _require_exact_keys(raw, required={"kind", "component"}, field=field)
+        if (
+            type(values["kind"]) is not str
+            or values["kind"] != ParticipantKind.RELEASED_COMPONENT.value
+        ):
+            raise InputError(f"{field}.kind must be 'released_component'")
+        component_raw = values["component"]
+        if (
+            type(component_raw) is not dict
+            or component_raw.get("schema_version") != COMPONENT_SCHEMA_V3
+        ):
+            raise InputError(
+                f"{field}.component must use component schema {COMPONENT_SCHEMA_V3!r}"
+            )
+        component = ComponentManifest.from_dict(
+            component_raw, field=f"{field}.component"
+        )
+        _enforce_component_caps(component, field=f"{field}.component")
+        frozen = _freeze_component(component)
+        for index, interface in enumerate(frozen.interfaces):
+            if interface.frame is None:  # pragma: no cover - schema v0.3 guard
+                raise InputError(
+                    f"{field}.component.interfaces[{index}].frame is required"
+                )
+            _frame_transform(
+                interface.frame, field=f"{field}.component.interfaces[{index}].frame"
+            )
+        return cls(frozen)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"kind": self.kind.value, "component": self.component.as_dict()}
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectedReferenceParticipant:
+    """A protected existing part whose authority remains in its sealed evidence."""
+
+    reference_component: ReferenceComponentManifest
+    design_around_request: DesignAroundRequest
+    design_around_projection: DesignAroundProjection
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("ProtectedReferenceParticipant may not be subclassed")
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.reference_component) is not ReferenceComponentManifest
+            or type(self.design_around_request) is not DesignAroundRequest
+            or type(self.design_around_projection) is not DesignAroundProjection
+        ):
+            raise InputError(
+                "protected_reference participant requires exact sealed public types"
+            )
+        if not verify_design_around_projection(
+            self.reference_component,
+            self.design_around_request,
+            self.design_around_projection,
+        ):
+            raise InputError(
+                "protected_reference design-around projection does not reproduce"
+            )
+        if (
+            self.design_around_request.required_interface_ids
+            and AllowedOperation.ATTACH_AT_DECLARED_INTERFACE
+            not in self.reference_component.allowed_operations
+        ):
+            raise InputError(
+                "protected_reference physical interfaces require "
+                "attach_at_declared_interface authority"
+            )
+
+    @property
+    def kind(self) -> ParticipantKind:
+        return ParticipantKind.PROTECTED_REFERENCE
+
+    @property
+    def evidence_blockers(self) -> tuple[str, ...]:
+        return self.design_around_projection.evidence_blockers
+
+    @property
+    def interface_authorities(self) -> tuple[tuple[str, EvidenceAuthority], ...]:
+        evidence = {
+            item.evidence_id: item.authority
+            for item in self.reference_component.evidence
+        }
+        requested = set(self.design_around_request.required_interface_ids)
+        return tuple(
+            (frame.frame_id, evidence[frame.evidence_id])
+            for frame in self.reference_component.reference_frames
+            if frame.frame_id in requested
+        )
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> ProtectedReferenceParticipant:
+        values = _require_exact_keys(
+            raw,
+            required={
+                "kind",
+                "reference_component",
+                "design_around_request",
+                "design_around_projection",
+            },
+            field=field,
+        )
+        if (
+            type(values["kind"]) is not str
+            or values["kind"] != ParticipantKind.PROTECTED_REFERENCE.value
+        ):
+            raise InputError(f"{field}.kind must be 'protected_reference'")
+        return cls(
+            ReferenceComponentManifest.from_dict(
+                values["reference_component"], field=f"{field}.reference_component"
+            ),
+            DesignAroundRequest.from_dict(
+                values["design_around_request"],
+                field=f"{field}.design_around_request",
+            ),
+            DesignAroundProjection.from_dict(
+                values["design_around_projection"],
+                field=f"{field}.design_around_projection",
+            ),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind.value,
+            "reference_component": self.reference_component.as_dict(),
+            "design_around_request": self.design_around_request.as_dict(),
+            "design_around_projection": self.design_around_projection.as_dict(),
+        }
+
+
+InterfaceParticipant = ReleasedComponentParticipant | ProtectedReferenceParticipant
+
+
+@dataclass(frozen=True, slots=True)
+class InterfaceOccurrenceV2:
+    occurrence_id: str
+    participant: InterfaceParticipant
+    anchor_transform: ExactRigidTransform | None
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("InterfaceOccurrenceV2 may not be subclassed")
+
+    def __post_init__(self) -> None:
+        _identifier(self.occurrence_id, "interface_occurrence_v2.occurrence_id")
+        if type(self.participant) not in {
+            ReleasedComponentParticipant,
+            ProtectedReferenceParticipant,
+        }:
+            raise InputError("interface_occurrence_v2 participant has an invalid type")
+        if (
+            self.anchor_transform is not None
+            and type(self.anchor_transform) is not ExactRigidTransform
+        ):
+            raise InputError(
+                "interface_occurrence_v2.anchor_transform must be exact or null"
+            )
+        if (
+            type(self.participant) is ProtectedReferenceParticipant
+            and self.participant.design_around_request.occurrence_id
+            != self.occurrence_id
+        ):
+            raise InputError(
+                "protected_reference occurrence must match its design-around request"
+            )
+        if (
+            type(self.participant) is ProtectedReferenceParticipant
+            and self.participant.design_around_projection.occurrence_id
+            != self.occurrence_id
+        ):
+            raise InputError(
+                "protected_reference occurrence must match its design-around projection"
+            )
+
+    @property
+    def component(self) -> ComponentManifest:
+        """Reject legacy geometry handoff for every version 0.2 occurrence."""
+
+        raise InputError(
+            "interface-assembly v0.2 is not accepted by component-assembly v0.1"
+        )
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> InterfaceOccurrenceV2:
+        values = _require_exact_keys(
+            raw,
+            required={"occurrence_id", "participant"},
+            optional={"anchor_transform"},
+            field=field,
+        )
+        participant_raw = values["participant"]
+        if (
+            type(participant_raw) is not dict
+            or type(participant_raw.get("kind")) is not str
+        ):
+            raise InputError(f"{field}.participant must be a tagged object")
+        if participant_raw["kind"] == ParticipantKind.RELEASED_COMPONENT.value:
+            participant: InterfaceParticipant = ReleasedComponentParticipant.from_dict(
+                participant_raw, field=f"{field}.participant"
+            )
+        elif participant_raw["kind"] == ParticipantKind.PROTECTED_REFERENCE.value:
+            participant = ProtectedReferenceParticipant.from_dict(
+                participant_raw, field=f"{field}.participant"
+            )
+        else:
+            raise InputError(f"{field}.participant.kind is unsupported")
+        anchor = (
+            ExactRigidTransform.from_dict(
+                values["anchor_transform"], field=f"{field}.anchor_transform"
+            )
+            if "anchor_transform" in values
+            else None
+        )
+        return cls(
+            _identifier(values["occurrence_id"], f"{field}.occurrence_id"),
+            participant,
+            anchor,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        document: dict[str, Any] = {
+            "occurrence_id": self.occurrence_id,
+            "participant": self.participant.as_dict(),
         }
         if self.anchor_transform is not None:
             document["anchor_transform"] = self.anchor_transform.as_dict()
@@ -278,7 +566,7 @@ class InterfaceMate:
 
 @dataclass(frozen=True, slots=True)
 class InterfaceAssembly:
-    occurrences: tuple[InterfaceOccurrence, ...]
+    occurrences: tuple[InterfaceOccurrence | InterfaceOccurrenceV2, ...]
     mates: tuple[InterfaceMate, ...]
     candidate_budget: int
     schema_version: str = INTERFACE_ASSEMBLY_SCHEMA
@@ -286,19 +574,22 @@ class InterfaceAssembly:
     @classmethod
     def from_dict(cls, raw: Any) -> InterfaceAssembly:
         _preflight_json(raw)
+        if type(raw) is not dict:
+            raise InputError("interface_assembly must be an object")
+        schema = raw.get("schema_version")
+        if type(schema) is not str or schema not in {
+            INTERFACE_ASSEMBLY_SCHEMA,
+            INTERFACE_ASSEMBLY_SCHEMA_V2,
+        }:
+            raise InputError(
+                "interface_assembly.schema_version must be "
+                f"{INTERFACE_ASSEMBLY_SCHEMA!r} or {INTERFACE_ASSEMBLY_SCHEMA_V2!r}"
+            )
         values = _require_exact_keys(
             raw,
             required={"schema_version", "occurrences", "mates", "candidate_budget"},
             field="interface_assembly",
         )
-        if (
-            type(values["schema_version"]) is not str
-            or values["schema_version"] != INTERFACE_ASSEMBLY_SCHEMA
-        ):
-            raise InputError(
-                "interface_assembly.schema_version must be "
-                f"{INTERFACE_ASSEMBLY_SCHEMA!r}"
-            )
         budget = values["candidate_budget"]
         if type(budget) is not int or not 1 <= budget <= MAX_CANDIDATE_BUDGET:
             raise InputError(
@@ -314,8 +605,13 @@ class InterfaceAssembly:
                 "interface_assembly.occurrences exceeds the "
                 f"{MAX_OCCURRENCES}-item limit"
             )
+        occurrence_type = (
+            InterfaceOccurrence
+            if schema == INTERFACE_ASSEMBLY_SCHEMA
+            else InterfaceOccurrenceV2
+        )
         occurrences = tuple(
-            InterfaceOccurrence.from_dict(
+            occurrence_type.from_dict(
                 item, field=f"interface_assembly.occurrences[{index}]"
             )
             for index, item in enumerate(occurrences_raw)
@@ -328,7 +624,9 @@ class InterfaceAssembly:
         )
         if len(anchors) != 1:
             raise InputError("interface_assembly must contain exactly one anchor")
-        total_interfaces = sum(len(item.component.interfaces) for item in occurrences)
+        total_interfaces = sum(
+            _occurrence_interface_count(item) for item in occurrences
+        )
         if total_interfaces > MAX_TOTAL_INTERFACES:
             raise InputError(
                 "interface_assembly components exceed the "
@@ -359,6 +657,7 @@ class InterfaceAssembly:
             tuple(sorted(occurrences, key=lambda item: item.occurrence_id)),
             tuple(sorted(mates, key=lambda item: item.mate_id)),
             budget,
+            schema,
         )
         _validate_mates(assembly)
         _validate_connected(assembly)
@@ -431,6 +730,187 @@ class SelectedMateAlternative:
 
 
 @dataclass(frozen=True, slots=True)
+class InterfaceEvidenceSummary:
+    """Evidence retained for one interface exposed to v0.2 placement."""
+
+    interface_id: str
+    authority: EvidenceAuthority | None
+    evidence_ids: tuple[str, ...]
+    resolution_required: bool
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> InterfaceEvidenceSummary:
+        values = _require_exact_keys(
+            raw,
+            required={
+                "interface_id",
+                "authority",
+                "evidence_ids",
+                "resolution_required",
+            },
+            field=field,
+        )
+        authority_raw = values["authority"]
+        authority_by_value = {item.value: item for item in EvidenceAuthority}
+        if authority_raw is not None and (
+            type(authority_raw) is not str or authority_raw not in authority_by_value
+        ):
+            raise InputError(f"{field}.authority is unsupported")
+        evidence_ids_raw = values["evidence_ids"]
+        if (
+            type(evidence_ids_raw) is not list
+            or len(evidence_ids_raw) > 128
+            or any(type(item) is not str for item in evidence_ids_raw)
+        ):
+            raise InputError(f"{field}.evidence_ids must be a bounded string list")
+        if evidence_ids_raw != sorted(set(evidence_ids_raw)):
+            raise InputError(f"{field}.evidence_ids must be sorted and unique")
+        resolution_required = values["resolution_required"]
+        if type(resolution_required) is not bool:
+            raise InputError(f"{field}.resolution_required must be boolean")
+        return cls(
+            _identifier(values["interface_id"], f"{field}.interface_id"),
+            authority_by_value[authority_raw] if authority_raw is not None else None,
+            tuple(evidence_ids_raw),
+            resolution_required,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "interface_id": self.interface_id,
+            "authority": self.authority.value if self.authority is not None else None,
+            "evidence_ids": list(self.evidence_ids),
+            "resolution_required": self.resolution_required,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ParticipantEvidenceSummary:
+    """Non-release evidence summary bound to one v0.2 participant occurrence."""
+
+    occurrence_id: str
+    participant_kind: ParticipantKind
+    subject_digest: str
+    request_digest: str | None
+    projection_digest: str | None
+    protected_constraint_count: int
+    resolution_required_count: int
+    authority_counts: tuple[tuple[str, int], ...]
+    exposed_interfaces: tuple[InterfaceEvidenceSummary, ...]
+    evidence_blockers: tuple[str, ...]
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> ParticipantEvidenceSummary:
+        values = _require_exact_keys(
+            raw,
+            required={
+                "occurrence_id",
+                "participant_kind",
+                "subject_digest",
+                "request_digest",
+                "projection_digest",
+                "protected_constraint_count",
+                "resolution_required_count",
+                "authority_counts",
+                "exposed_interfaces",
+                "evidence_blockers",
+            },
+            field=field,
+        )
+        kind_raw = values["participant_kind"]
+        kind_by_value = {item.value: item for item in ParticipantKind}
+        if type(kind_raw) is not str or kind_raw not in kind_by_value:
+            raise InputError(f"{field}.participant_kind is unsupported")
+        kind = kind_by_value[kind_raw]
+        request_digest = values["request_digest"]
+        projection_digest = values["projection_digest"]
+        if kind is ParticipantKind.RELEASED_COMPONENT:
+            if request_digest is not None or projection_digest is not None:
+                raise InputError(
+                    f"{field} released participants cannot bind projections"
+                )
+        else:
+            request_digest = _sha256(request_digest, f"{field}.request_digest")
+            projection_digest = _sha256(projection_digest, f"{field}.projection_digest")
+        constraint_count = values["protected_constraint_count"]
+        resolution_count = values["resolution_required_count"]
+        if (
+            type(constraint_count) is not int
+            or not 0 <= constraint_count <= 4_096
+            or type(resolution_count) is not int
+            or not 0 <= resolution_count <= constraint_count
+        ):
+            raise InputError(f"{field} has invalid constraint counts")
+        counts_raw = values["authority_counts"]
+        allowed_authorities = {item.value for item in EvidenceAuthority} | {
+            "unattributed"
+        }
+        if (
+            type(counts_raw) is not dict
+            or len(counts_raw) > len(allowed_authorities)
+            or any(
+                type(key) is not str
+                or key not in allowed_authorities
+                or type(value) is not int
+                or value < 1
+                for key, value in counts_raw.items()
+            )
+        ):
+            raise InputError(f"{field}.authority_counts is invalid")
+        authority_counts = tuple(sorted(counts_raw.items()))
+        if sum(value for _, value in authority_counts) != constraint_count:
+            raise InputError(f"{field}.authority_counts must cover all constraints")
+        interfaces_raw = values["exposed_interfaces"]
+        blockers_raw = values["evidence_blockers"]
+        if type(interfaces_raw) is not list or len(interfaces_raw) > 256:
+            raise InputError(f"{field}.exposed_interfaces exceeds collection limits")
+        if (
+            type(blockers_raw) is not list
+            or len(blockers_raw) > 4_096
+            or any(type(item) is not str for item in blockers_raw)
+        ):
+            raise InputError(f"{field}.evidence_blockers must be a bounded string list")
+        interfaces = tuple(
+            InterfaceEvidenceSummary.from_dict(
+                item, field=f"{field}.exposed_interfaces[{index}]"
+            )
+            for index, item in enumerate(interfaces_raw)
+        )
+        if tuple(item.interface_id for item in interfaces) != tuple(
+            sorted({item.interface_id for item in interfaces})
+        ):
+            raise InputError(f"{field}.exposed_interfaces must be sorted and unique")
+        if blockers_raw != sorted(set(blockers_raw)):
+            raise InputError(f"{field}.evidence_blockers must be sorted and unique")
+        return cls(
+            _identifier(values["occurrence_id"], f"{field}.occurrence_id"),
+            kind,
+            _sha256(values["subject_digest"], f"{field}.subject_digest"),
+            request_digest,
+            projection_digest,
+            constraint_count,
+            resolution_count,
+            authority_counts,
+            interfaces,
+            tuple(blockers_raw),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "occurrence_id": self.occurrence_id,
+            "participant_kind": self.participant_kind.value,
+            "subject_digest": self.subject_digest,
+            "request_digest": self.request_digest,
+            "projection_digest": self.projection_digest,
+            "protected_constraint_count": self.protected_constraint_count,
+            "resolution_required_count": self.resolution_required_count,
+            "authority_counts": dict(self.authority_counts),
+            "exposed_interfaces": [item.as_dict() for item in self.exposed_interfaces],
+            "evidence_blockers": list(self.evidence_blockers),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class InterfaceAssemblyResult:
     status: SolveStatus
     examined_candidates: int
@@ -439,31 +919,43 @@ class InterfaceAssemblyResult:
     selected_alternatives: tuple[SelectedMateAlternative, ...] = ()
     inconclusive_reason: InconclusiveReason | None = None
     schema_version: str = INTERFACE_ASSEMBLY_RESULT_SCHEMA
+    assembly_digest: str | None = None
+    participant_evidence: tuple[ParticipantEvidenceSummary, ...] = ()
+    release_eligible: bool | None = None
 
     @classmethod
     def from_dict(cls, raw: Any) -> InterfaceAssemblyResult:
         _preflight_json(raw)
+        if type(raw) is not dict:
+            raise InputError("interface_assembly_result must be an object")
+        schema = raw.get("schema_version")
+        if type(schema) is not str or schema not in {
+            INTERFACE_ASSEMBLY_RESULT_SCHEMA,
+            INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2,
+        }:
+            raise InputError(
+                "interface_assembly_result.schema_version must be "
+                f"{INTERFACE_ASSEMBLY_RESULT_SCHEMA!r} or "
+                f"{INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2!r}"
+            )
+        required = {
+            "schema_version",
+            "status",
+            "examined_candidates",
+            "candidate_budget",
+            "occurrence_transforms",
+            "selected_alternatives",
+        }
+        if schema == INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2:
+            required.update(
+                {"assembly_digest", "participant_evidence", "release_eligible"}
+            )
         values = _require_exact_keys(
             raw,
-            required={
-                "schema_version",
-                "status",
-                "examined_candidates",
-                "candidate_budget",
-                "occurrence_transforms",
-                "selected_alternatives",
-            },
+            required=required,
             optional={"inconclusive_reason"},
             field="interface_assembly_result",
         )
-        if (
-            type(values["schema_version"]) is not str
-            or values["schema_version"] != INTERFACE_ASSEMBLY_RESULT_SCHEMA
-        ):
-            raise InputError(
-                "interface_assembly_result.schema_version must be "
-                f"{INTERFACE_ASSEMBLY_RESULT_SCHEMA!r}"
-            )
         status_by_value = {item.value: item for item in SolveStatus}
         status_raw = values["status"]
         if type(status_raw) is not str or status_raw not in status_by_value:
@@ -489,6 +981,32 @@ class InterfaceAssemblyResult:
             )
         if len(transforms_raw) > MAX_OCCURRENCES or len(selections_raw) > MAX_MATES:
             raise InputError("interface_assembly_result exceeds collection limits")
+        participant_evidence: tuple[ParticipantEvidenceSummary, ...] = ()
+        release_eligible: bool | None = None
+        if schema == INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2:
+            evidence_raw = values["participant_evidence"]
+            if type(evidence_raw) is not list or len(evidence_raw) > MAX_OCCURRENCES:
+                raise InputError(
+                    "interface_assembly_result.participant_evidence exceeds limits"
+                )
+            participant_evidence = tuple(
+                ParticipantEvidenceSummary.from_dict(
+                    item,
+                    field=f"interface_assembly_result.participant_evidence[{index}]",
+                )
+                for index, item in enumerate(evidence_raw)
+            )
+            if tuple(item.occurrence_id for item in participant_evidence) != tuple(
+                sorted({item.occurrence_id for item in participant_evidence})
+            ):
+                raise InputError(
+                    "interface_assembly_result participant evidence must be sorted and unique"
+                )
+            if values["release_eligible"] is not False:
+                raise InputError(
+                    "interface_assembly_result v0.2 is placement evidence, not a release"
+                )
+            release_eligible = False
         transforms = tuple(
             SolvedOccurrence.from_dict(
                 item,
@@ -565,6 +1083,17 @@ class InterfaceAssemblyResult:
             occurrence_transforms=transforms,
             selected_alternatives=selections,
             inconclusive_reason=reason,
+            schema_version=schema,
+            assembly_digest=(
+                _sha256(
+                    values["assembly_digest"],
+                    "interface_assembly_result.assembly_digest",
+                )
+                if schema == INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2
+                else None
+            ),
+            participant_evidence=participant_evidence,
+            release_eligible=release_eligible,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -582,11 +1111,407 @@ class InterfaceAssemblyResult:
         }
         if self.inconclusive_reason is not None:
             document["inconclusive_reason"] = self.inconclusive_reason.value
+        if self.schema_version == INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2:
+            document["assembly_digest"] = self.assembly_digest
+            document["participant_evidence"] = [
+                item.as_dict() for item in self.participant_evidence
+            ]
+            document["release_eligible"] = self.release_eligible
         return document
 
 
 class _ExactScalarLimit(Exception):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _PlacementInterface:
+    interface_id: str
+    kind: InterfaceKind
+    direction: InterfaceDirection
+    medium: str
+    properties: tuple[tuple[str, str], ...]
+    frame: ExactRigidTransform
+    authority: EvidenceAuthority | None
+    evidence_ids: tuple[str, ...]
+    resolution_required: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _PlacementOccurrence:
+    occurrence_id: str
+    interfaces: tuple[_PlacementInterface, ...]
+    anchor_transform: ExactRigidTransform | None
+    participant_kind: ParticipantKind
+    subject_digest: str
+    request_digest: str | None
+    projection_digest: str | None
+    evidence_blockers: tuple[str, ...]
+    protected_constraint_authorities: tuple[EvidenceAuthority | None, ...]
+    protected_resolution_required_count: int
+
+
+def _occurrence_interface_count(
+    occurrence: InterfaceOccurrence | InterfaceOccurrenceV2,
+) -> int:
+    if type(occurrence) is InterfaceOccurrence:
+        return len(occurrence.component.interfaces)
+    if type(occurrence) is InterfaceOccurrenceV2:
+        participant = occurrence.participant
+        if type(participant) is ReleasedComponentParticipant:
+            return len(participant.component.interfaces)
+        if type(participant) is ProtectedReferenceParticipant:
+            return len(participant.design_around_request.required_interface_ids)
+    raise InputError("interface assembly contains a non-canonical occurrence")
+
+
+def _normalize_occurrence(
+    occurrence: InterfaceOccurrence | InterfaceOccurrenceV2,
+) -> _PlacementOccurrence:
+    if type(occurrence) is InterfaceOccurrence:
+        participant_kind = ParticipantKind.RELEASED_COMPONENT
+        component = occurrence.component
+        participant: InterfaceParticipant | None = None
+    elif type(occurrence) is InterfaceOccurrenceV2:
+        participant = occurrence.participant
+        participant_kind = participant.kind
+        component = (
+            participant.component
+            if type(participant) is ReleasedComponentParticipant
+            else None
+        )
+    else:  # pragma: no cover - trusted boundary guard
+        raise InputError("interface assembly contains a non-canonical occurrence")
+
+    if component is not None:
+        interfaces = tuple(
+            _PlacementInterface(
+                item.interface_id,
+                item.kind,
+                item.direction,
+                item.medium,
+                tuple(sorted(item.properties.items())),
+                _frame_transform(item.frame, field="interface frame"),  # type: ignore[arg-type]
+                None,
+                (),
+                False,
+            )
+            for item in component.interfaces
+        )
+        return _PlacementOccurrence(
+            occurrence.occurrence_id,
+            interfaces,
+            occurrence.anchor_transform,
+            participant_kind,
+            component.manifest_digest,
+            None,
+            None,
+            (),
+            (),
+            0,
+        )
+
+    if type(participant) is not ProtectedReferenceParticipant:  # pragma: no cover
+        raise InputError("protected reference participant is unavailable")
+    reference = participant.reference_component
+    request = participant.design_around_request
+    projection = participant.design_around_projection
+    requested = set(request.required_interface_ids)
+    evidence = {item.evidence_id: item for item in reference.evidence}
+    constraints = {
+        item.constraint_id: item for item in projection.protected_constraints
+    }
+    interfaces = tuple(
+        _PlacementInterface(
+            frame.frame_id,
+            frame.interface_kind,  # type: ignore[arg-type]
+            frame.direction,  # type: ignore[arg-type]
+            frame.medium,  # type: ignore[arg-type]
+            frame.properties,
+            frame.transform,
+            evidence[frame.evidence_id].authority,
+            (frame.evidence_id,),
+            constraints[f"frame:{frame.frame_id}"].resolution_required,
+        )
+        for frame in reference.reference_frames
+        if frame.role is FrameRole.INTERFACE and frame.frame_id in requested
+    )
+    if (
+        tuple(item.interface_id for item in interfaces)
+        != request.required_interface_ids
+    ):
+        raise InputError(
+            "protected_reference requested interfaces must retain canonical frame order"
+        )
+    return _PlacementOccurrence(
+        occurrence.occurrence_id,
+        interfaces,
+        occurrence.anchor_transform,
+        participant_kind,
+        reference.content_digest,
+        request.content_digest,
+        projection.content_digest,
+        projection.evidence_blockers,
+        tuple(item.authority for item in projection.protected_constraints),
+        sum(item.resolution_required for item in projection.protected_constraints),
+    )
+
+
+def _normalized_occurrences(
+    assembly: InterfaceAssembly,
+) -> dict[str, _PlacementOccurrence]:
+    return {
+        item.occurrence_id: _normalize_occurrence(item) for item in assembly.occurrences
+    }
+
+
+def _oracle_occurrences(
+    assembly: InterfaceAssembly,
+) -> dict[str, _PlacementOccurrence]:
+    """Interpret participant placement evidence independently for verification."""
+
+    normalized: dict[str, _PlacementOccurrence] = {}
+    for occurrence in assembly.occurrences:
+        component: ComponentManifest | None = None
+        if type(occurrence) is InterfaceOccurrence:
+            component = occurrence.component
+        elif (
+            type(occurrence) is InterfaceOccurrenceV2
+            and type(occurrence.participant) is ReleasedComponentParticipant
+        ):
+            component = occurrence.participant.component
+        if component is not None:
+            interfaces = []
+            for interface in component.interfaces:
+                frame = interface.frame
+                if type(frame) is not ExactInterfaceFrame:
+                    raise InputError(
+                        "oracle requires an exact released interface frame"
+                    )
+                try:
+                    exact_frame = ExactRigidTransform(
+                        ExactVector3(
+                            *(Fraction(frame.origin[axis]) for axis in ("x", "y", "z"))
+                        ),
+                        ExactRotation3(
+                            ExactVector3(*frame.x_axis),
+                            ExactVector3(*frame.y_axis),
+                            ExactVector3(*frame.z_axis),
+                        ),
+                    )
+                except InputError as exc:
+                    raise InputError(
+                        f"oracle cannot represent released interface {interface.interface_id}: {exc}"
+                    ) from exc
+                interfaces.append(
+                    _PlacementInterface(
+                        interface.interface_id,
+                        InterfaceKind(interface.kind.value),
+                        InterfaceDirection(interface.direction.value),
+                        str(interface.medium),
+                        tuple(
+                            sorted(
+                                (str(k), str(v))
+                                for k, v in interface.properties.items()
+                            )
+                        ),
+                        exact_frame,
+                        None,
+                        (),
+                        False,
+                    )
+                )
+            normalized[occurrence.occurrence_id] = _PlacementOccurrence(
+                occurrence.occurrence_id,
+                tuple(interfaces),
+                occurrence.anchor_transform,
+                ParticipantKind.RELEASED_COMPONENT,
+                component.manifest_digest,
+                None,
+                None,
+                (),
+                (),
+                0,
+            )
+            continue
+
+        if (
+            type(occurrence) is not InterfaceOccurrenceV2
+            or type(occurrence.participant) is not ProtectedReferenceParticipant
+        ):
+            raise InputError("oracle encountered a non-canonical participant")
+        participant = occurrence.participant
+        reference = participant.reference_component
+        request = participant.design_around_request
+        projection = participant.design_around_projection
+        if request.required_interface_ids and (
+            AllowedOperation.ATTACH_AT_DECLARED_INTERFACE
+            not in reference.allowed_operations
+        ):
+            raise InputError(
+                "oracle refuses physical interfaces without attach_at_declared_interface"
+            )
+        evidence_records: dict[str, EvidenceRecord] = {}
+        for record in reference.evidence:
+            if record.evidence_id in evidence_records:
+                raise InputError(
+                    "oracle found duplicate protected evidence identifiers"
+                )
+            evidence_records[record.evidence_id] = record
+        interfaces = []
+        for requested_id in request.required_interface_ids:
+            frames = tuple(
+                frame
+                for frame in reference.reference_frames
+                if frame.frame_id == requested_id and frame.role is FrameRole.INTERFACE
+            )
+            if len(frames) != 1:
+                raise InputError(
+                    "oracle could not resolve exactly one requested physical interface"
+                )
+            frame = frames[0]
+            constraints = tuple(
+                item
+                for item in projection.protected_constraints
+                if item.kind is ConstraintKind.FRAME
+                and item.source_path == f"/reference_frames/{requested_id}"
+            )
+            if len(constraints) != 1:
+                raise InputError(
+                    "oracle could not resolve exactly one protected frame constraint"
+                )
+            constraint = constraints[0]
+            record = evidence_records.get(frame.evidence_id)
+            if (
+                record is None
+                or constraint.evidence_ids != (frame.evidence_id,)
+                or constraint.authority is not record.authority
+                or frame.interface_kind is None
+                or frame.direction is None
+                or frame.medium is None
+            ):
+                raise InputError("oracle rejected protected interface evidence binding")
+            interfaces.append(
+                _PlacementInterface(
+                    requested_id,
+                    InterfaceKind(frame.interface_kind.value),
+                    InterfaceDirection(frame.direction.value),
+                    str(frame.medium),
+                    tuple((str(key), str(value)) for key, value in frame.properties),
+                    ExactRigidTransform.from_dict(
+                        frame.transform.as_dict(),
+                        field=f"oracle.reference_frames.{requested_id}.transform",
+                    ),
+                    EvidenceAuthority(record.authority.value),
+                    tuple(str(item) for item in constraint.evidence_ids),
+                    bool(constraint.resolution_required),
+                )
+            )
+        normalized[occurrence.occurrence_id] = _PlacementOccurrence(
+            occurrence.occurrence_id,
+            tuple(interfaces),
+            occurrence.anchor_transform,
+            ParticipantKind.PROTECTED_REFERENCE,
+            str(reference.content_digest),
+            str(request.content_digest),
+            str(projection.content_digest),
+            tuple(str(item) for item in projection.evidence_blockers),
+            tuple(
+                EvidenceAuthority(item.authority.value)
+                if item.authority is not None
+                else None
+                for item in projection.protected_constraints
+            ),
+            sum(
+                1
+                for item in projection.protected_constraints
+                if item.resolution_required
+            ),
+        )
+    return normalized
+
+
+def _participant_evidence_summaries(
+    occurrences: dict[str, _PlacementOccurrence],
+) -> tuple[ParticipantEvidenceSummary, ...]:
+    summaries = []
+    for occurrence_id in sorted(occurrences):
+        occurrence = occurrences[occurrence_id]
+        counts: dict[str, int] = {}
+        for authority in occurrence.protected_constraint_authorities:
+            key = authority.value if authority is not None else "unattributed"
+            counts[key] = counts.get(key, 0) + 1
+        summaries.append(
+            ParticipantEvidenceSummary(
+                occurrence_id=occurrence.occurrence_id,
+                participant_kind=occurrence.participant_kind,
+                subject_digest=occurrence.subject_digest,
+                request_digest=occurrence.request_digest,
+                projection_digest=occurrence.projection_digest,
+                protected_constraint_count=len(
+                    occurrence.protected_constraint_authorities
+                ),
+                resolution_required_count=(
+                    occurrence.protected_resolution_required_count
+                ),
+                authority_counts=tuple(sorted(counts.items())),
+                exposed_interfaces=tuple(
+                    InterfaceEvidenceSummary(
+                        interface_id=item.interface_id,
+                        authority=item.authority,
+                        evidence_ids=tuple(sorted(item.evidence_ids)),
+                        resolution_required=item.resolution_required,
+                    )
+                    for item in occurrence.interfaces
+                ),
+                evidence_blockers=occurrence.evidence_blockers,
+            )
+        )
+    return tuple(summaries)
+
+
+def _result_identity(assembly: InterfaceAssembly) -> dict[str, Any]:
+    if assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA_V2:
+        occurrences = _normalized_occurrences(assembly)
+        return {
+            "schema_version": INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2,
+            "assembly_digest": digest(assembly.as_dict()),
+            "participant_evidence": _participant_evidence_summaries(occurrences),
+            "release_eligible": False,
+        }
+    return {
+        "schema_version": INTERFACE_ASSEMBLY_RESULT_SCHEMA,
+        "assembly_digest": None,
+        "participant_evidence": (),
+        "release_eligible": None,
+    }
+
+
+def _result_identity_matches(
+    assembly: InterfaceAssembly, result: InterfaceAssemblyResult
+) -> bool:
+    if assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA:
+        return (
+            result.schema_version == INTERFACE_ASSEMBLY_RESULT_SCHEMA
+            and result.assembly_digest is None
+        )
+    return (
+        assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA_V2
+        and result.schema_version == INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2
+        and result.assembly_digest == digest(assembly.as_dict())
+    )
+
+
+def _result_evidence_matches(
+    assembly: InterfaceAssembly, result: InterfaceAssemblyResult
+) -> bool:
+    if assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA:
+        return result.participant_evidence == () and result.release_eligible is None
+    oracle = _oracle_occurrences(assembly)
+    return (
+        result.release_eligible is False
+        and result.participant_evidence == _participant_evidence_summaries(oracle)
+    )
 
 
 def solve_interface_assembly(assembly: InterfaceAssembly) -> InterfaceAssemblyResult:
@@ -621,6 +1546,7 @@ def solve_interface_assembly(assembly: InterfaceAssembly) -> InterfaceAssemblyRe
                 examined_candidates=examined,
                 candidate_budget=assembly.candidate_budget,
                 inconclusive_reason=InconclusiveReason.EXACT_SCALAR_LIMIT,
+                **_result_identity(assembly),
             )
         if transforms is None:
             continue
@@ -640,6 +1566,7 @@ def solve_interface_assembly(assembly: InterfaceAssembly) -> InterfaceAssemblyRe
                 )
                 for mate in assembly.mates
             ),
+            **_result_identity(assembly),
         )
         try:
             verified = verify_interface_assembly_solution(
@@ -651,6 +1578,7 @@ def solve_interface_assembly(assembly: InterfaceAssembly) -> InterfaceAssemblyRe
                 examined_candidates=examined,
                 candidate_budget=assembly.candidate_budget,
                 inconclusive_reason=InconclusiveReason.EXACT_SCALAR_LIMIT,
+                **_result_identity(assembly),
             )
         if not verified:
             raise RuntimeError("internal interface assembly reconstruction failed")
@@ -665,6 +1593,7 @@ def solve_interface_assembly(assembly: InterfaceAssembly) -> InterfaceAssemblyRe
         examined_candidates=examined,
         candidate_budget=assembly.candidate_budget,
         inconclusive_reason=inconclusive_reason,
+        **_result_identity(assembly),
     )
 
 
@@ -686,6 +1615,10 @@ def verify_interface_assembly_solution(
         result = _trusted_result_snapshot(result)
     except InputError:
         return False
+    if not _result_identity_matches(assembly, result):
+        return False
+    if not _result_evidence_matches(assembly, result):
+        return False
     if (
         result.status is not SolveStatus.SOLVED
         or result.candidate_budget != assembly.candidate_budget
@@ -703,7 +1636,7 @@ def verify_interface_assembly_solution(
     transforms = {
         item.occurrence_id: item.transform for item in result.occurrence_transforms
     }
-    occurrences = {item.occurrence_id: item for item in assembly.occurrences}
+    occurrences = _oracle_occurrences(assembly)
     anchor = next(
         item for item in assembly.occurrences if item.anchor_transform is not None
     )
@@ -803,6 +1736,10 @@ def verify_interface_assembly_result(
     try:
         result = _trusted_result_snapshot(result)
     except InputError:
+        return False
+    if not _result_identity_matches(assembly, result):
+        return False
+    if not _result_evidence_matches(assembly, result):
         return False
     if result.candidate_budget != assembly.candidate_budget:
         return False
@@ -916,7 +1853,7 @@ def _independent_candidate_transforms(
 ) -> dict[str, _RawTransform] | None:
     """Solve graph equations with a separate bounded raw-Fraction oracle."""
 
-    occurrences = {item.occurrence_id: item for item in assembly.occurrences}
+    occurrences = _oracle_occurrences(assembly)
     anchor = next(
         item for item in assembly.occurrences if item.anchor_transform is not None
     )
@@ -1048,7 +1985,7 @@ def _raw_bounded(value: Fraction) -> Fraction:
 def _propagate_candidate(
     assembly: InterfaceAssembly, selection: dict[str, MateAlternative]
 ) -> dict[str, ExactRigidTransform] | None:
-    occurrences = {item.occurrence_id: item for item in assembly.occurrences}
+    occurrences = _normalized_occurrences(assembly)
     anchor = next(
         item for item in assembly.occurrences if item.anchor_transform is not None
     )
@@ -1154,21 +2091,19 @@ def _frame_transform(frame: ExactInterfaceFrame, *, field: str) -> ExactRigidTra
 
 
 def _endpoint_frame(
-    occurrences: dict[str, InterfaceOccurrence], endpoint: InterfaceEndpoint
+    occurrences: dict[str, _PlacementOccurrence], endpoint: InterfaceEndpoint
 ) -> ExactRigidTransform:
     occurrence = occurrences[endpoint.occurrence_id]
     interface = next(
         item
-        for item in occurrence.component.interfaces
+        for item in occurrence.interfaces
         if item.interface_id == endpoint.interface_id
     )
-    if interface.frame is None:  # pragma: no cover - component v0.3 guard
-        raise InputError("interface frame is required")
-    return _frame_transform(interface.frame, field="interface frame")
+    return interface.frame
 
 
 def _validate_mates(assembly: InterfaceAssembly) -> None:
-    occurrences = {item.occurrence_id: item for item in assembly.occurrences}
+    occurrences = _normalized_occurrences(assembly)
     used_endpoints: set[InterfaceEndpoint] = set()
     for mate in assembly.mates:
         first = _resolve_interface(
@@ -1192,11 +2127,13 @@ def _validate_mates(assembly: InterfaceAssembly) -> None:
             raise InputError(
                 f"mate {mate.mate_id} interface directions are incompatible"
             )
+        first_properties = dict(first.properties)
+        second_properties = dict(second.properties)
         for property_key in mate.property_keys:
             if (
-                property_key not in first.properties
-                or property_key not in second.properties
-                or first.properties[property_key] != second.properties[property_key]
+                property_key not in first_properties
+                or property_key not in second_properties
+                or first_properties[property_key] != second_properties[property_key]
             ):
                 raise InputError(
                     f"mate {mate.mate_id} selected property {property_key!r} is incompatible"
@@ -1226,11 +2163,11 @@ def _validate_connected(assembly: InterfaceAssembly) -> None:
 
 
 def _resolve_interface(
-    occurrences: dict[str, InterfaceOccurrence],
+    occurrences: dict[str, _PlacementOccurrence],
     endpoint: InterfaceEndpoint,
     *,
     field: str,
-) -> ComponentInterface:
+) -> _PlacementInterface:
     occurrence = occurrences.get(endpoint.occurrence_id)
     if occurrence is None:
         raise InputError(
@@ -1238,7 +2175,7 @@ def _resolve_interface(
         )
     matches = tuple(
         item
-        for item in occurrence.component.interfaces
+        for item in occurrence.interfaces
         if item.interface_id == endpoint.interface_id
     )
     if len(matches) != 1:
@@ -1246,8 +2183,6 @@ def _resolve_interface(
             f"{field} must identify exactly one framed interface, got "
             f"{endpoint.interface_id!r}"
         )
-    if matches[0].frame is None:  # pragma: no cover - component v0.3 guard
-        raise InputError(f"{field} interface must have an exact frame")
     return matches[0]
 
 
@@ -1356,6 +2291,13 @@ def _identifier(value: Any, field: str) -> str:
             f"{field} must be a non-empty string of at most "
             f"{MAX_IDENTIFIER_CHARACTERS} characters"
         )
+    _utf8_string(value, field)
+    return value
+
+
+def _sha256(value: Any, field: str) -> str:
+    if type(value) is not str or not _SHA256.fullmatch(value):
+        raise InputError(f"{field} must be a lowercase sha256 digest")
     return value
 
 
@@ -1413,41 +2355,35 @@ def _precheck_direct_assembly_collections(assembly: InterfaceAssembly) -> None:
     total_interfaces = 0
     projected_json_nodes = 5  # root plus its four field values
     for occurrence in assembly.occurrences:
-        if (
-            type(occurrence) is not InterfaceOccurrence
-            or type(occurrence.component) is not ComponentManifest
-        ):
-            raise InputError("assembly object contains a non-canonical occurrence")
-        component = occurrence.component
-        if (
-            type(component.artifacts) is not tuple
-            or type(component.interfaces) is not tuple
-            or type(component.capabilities) is not tuple
-            or type(component.metadata) is not _MAPPING_PROXY_TYPE
-            or len(component.artifacts) > MAX_ARTIFACTS_PER_COMPONENT
-            or len(component.interfaces) > MAX_INTERFACES_PER_COMPONENT
-            or len(component.capabilities) > MAX_CAPABILITIES_PER_COMPONENT
-            or len(component.metadata) > MAX_COMPONENT_METADATA_FIELDS
-        ):
-            raise InputError("assembly component exceeds direct collection limits")
-        total_interfaces += len(component.interfaces)
+        if assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA:
+            if type(occurrence) is not InterfaceOccurrence:
+                raise InputError("assembly object contains a non-canonical occurrence")
+            component = occurrence.component
+            _precheck_component_collections(component)
+            interface_count = len(component.interfaces)
+            projected_json_nodes += _component_projected_nodes(component)
+        elif assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA_V2:
+            if type(occurrence) is not InterfaceOccurrenceV2:
+                raise InputError(
+                    "assembly object contains a non-canonical v0.2 occurrence"
+                )
+            participant = occurrence.participant
+            if type(participant) is ReleasedComponentParticipant:
+                component = participant.component
+                _precheck_component_collections(component)
+                interface_count = len(component.interfaces)
+                projected_json_nodes += 2 + _component_projected_nodes(component)
+            elif type(participant) is ProtectedReferenceParticipant:
+                interface_count, nodes = _precheck_protected_collections(participant)
+                projected_json_nodes += nodes
+            else:
+                raise InputError("assembly participant has a non-canonical type")
+        else:
+            raise InputError("assembly object has an unsupported schema version")
+        total_interfaces += interface_count
         if total_interfaces > MAX_TOTAL_INTERFACES:
             raise InputError("assembly exceeds the aggregate interface limit")
-        projected_json_nodes += (
-            25
-            + 6 * len(component.artifacts)
-            + len(component.capabilities)
-            + len(component.metadata)
-            + (20 if occurrence.anchor_transform is not None else 0)
-        )
-        for interface in component.interfaces:
-            if (
-                type(interface) is not ComponentInterface
-                or type(interface.properties) is not _MAPPING_PROXY_TYPE
-                or len(interface.properties) > MAX_INTERFACE_PROPERTIES
-            ):
-                raise InputError("assembly interface exceeds direct collection limits")
-            projected_json_nodes += 26 + len(interface.properties)
+        projected_json_nodes += 20 if occurrence.anchor_transform is not None else 0
         if projected_json_nodes > MAX_JSON_NODES:
             raise InputError("assembly exceeds the aggregate JSON node limit")
 
@@ -1471,6 +2407,136 @@ def _precheck_direct_assembly_collections(assembly: InterfaceAssembly) -> None:
             raise InputError("assembly exceeds the aggregate JSON node limit")
 
 
+def _precheck_component_collections(component: Any) -> None:
+    if (
+        type(component) is not ComponentManifest
+        or type(component.artifacts) is not tuple
+        or type(component.interfaces) is not tuple
+        or type(component.capabilities) is not tuple
+        or type(component.metadata) is not _MAPPING_PROXY_TYPE
+        or len(component.artifacts) > MAX_ARTIFACTS_PER_COMPONENT
+        or len(component.interfaces) > MAX_INTERFACES_PER_COMPONENT
+        or len(component.capabilities) > MAX_CAPABILITIES_PER_COMPONENT
+        or len(component.metadata) > MAX_COMPONENT_METADATA_FIELDS
+    ):
+        raise InputError("assembly component exceeds direct collection limits")
+    for interface in component.interfaces:
+        if (
+            type(interface) is not ComponentInterface
+            or type(interface.properties) is not _MAPPING_PROXY_TYPE
+            or len(interface.properties) > MAX_INTERFACE_PROPERTIES
+        ):
+            raise InputError("assembly interface exceeds direct collection limits")
+
+
+def _component_projected_nodes(component: ComponentManifest) -> int:
+    return (
+        25
+        + 6 * len(component.artifacts)
+        + len(component.capabilities)
+        + len(component.metadata)
+        + sum(26 + len(interface.properties) for interface in component.interfaces)
+    )
+
+
+def _precheck_protected_collections(
+    participant: ProtectedReferenceParticipant,
+) -> tuple[int, int]:
+    reference = participant.reference_component
+    request = participant.design_around_request
+    projection = participant.design_around_projection
+    if (
+        type(reference) is not ReferenceComponentManifest
+        or type(request) is not DesignAroundRequest
+        or type(projection) is not DesignAroundProjection
+    ):
+        raise InputError("protected reference contains non-canonical public types")
+    collections = (
+        (reference.evidence, 128, "reference evidence"),
+        (reference.reference_frames, 256, "reference frames"),
+        (reference.envelopes, 256, "reference envelopes"),
+        (reference.allowed_operations, len(AllowedOperation), "allowed operations"),
+        (reference.known_fields, 512, "reference known fields"),
+        (reference.unknown_fields, 512, "reference unknown fields"),
+        (reference.evidence_gates, 5, "reference evidence gates"),
+        (request.flexible_domains, 32, "reference flexible domains"),
+        (request.required_interface_ids, 256, "reference required interfaces"),
+        (request.clearances, 256, "reference clearances"),
+        (projection.protected_constraints, 4_096, "projected constraints"),
+        (projection.flexible_bindings, 32, "projected flexible bindings"),
+        (projection.evidence_blockers, 4_096, "projected evidence blockers"),
+    )
+    for value, maximum, label in collections:
+        if type(value) is not tuple or len(value) > maximum:
+            raise InputError(f"{label} exceeds direct collection limits")
+    exact_items = (
+        (reference.evidence, EvidenceRecord, "reference evidence"),
+        (reference.reference_frames, ReferenceFrame, "reference frames"),
+        (reference.envelopes, SpatialEnvelope, "reference envelopes"),
+        (reference.known_fields, KnownField, "reference known fields"),
+        (reference.unknown_fields, UnknownField, "reference unknown fields"),
+        (reference.evidence_gates, EvidenceGate, "reference evidence gates"),
+        (request.clearances, ClearanceRequirement, "reference clearances"),
+        (
+            projection.protected_constraints,
+            ProjectedConstraint,
+            "projected constraints",
+        ),
+        (
+            projection.flexible_bindings,
+            FlexibleDesignBinding,
+            "projected flexible bindings",
+        ),
+    )
+    for value, expected, label in exact_items:
+        if any(type(item) is not expected for item in value):
+            raise InputError(f"{label} contains non-canonical values")
+    nested_collections = (
+        *((item.supports, 512, "evidence supports") for item in reference.evidence),
+        *(
+            (item.properties, MAX_INTERFACE_PROPERTIES, "reference frame properties")
+            for item in reference.reference_frames
+        ),
+        *(
+            (item.evidence_ids, 128, "evidence gate identifiers")
+            for item in reference.evidence_gates
+        ),
+        *(
+            (item.evidence_ids, 128, "constraint evidence identifiers")
+            for item in projection.protected_constraints
+        ),
+        *(
+            (item.interface_ids, 256, "flexible binding interfaces")
+            for item in projection.flexible_bindings
+        ),
+    )
+    for value, maximum, label in nested_collections:
+        if type(value) is not tuple or len(value) > maximum:
+            raise InputError(f"{label} exceeds direct nested collection limits")
+    if (
+        reference.mass_properties is not None
+        and type(reference.mass_properties) is not MassProperties
+    ):
+        raise InputError("reference mass properties have a non-canonical type")
+    if any(type(item) is not str for item in request.required_interface_ids):
+        raise InputError("reference required interfaces must contain exact strings")
+    if any(type(item) is not DesignDomain for item in request.flexible_domains):
+        raise InputError("reference flexible domains contain non-canonical values")
+    if any(type(item) is not AllowedOperation for item in reference.allowed_operations):
+        raise InputError("reference allowed operations contain non-canonical values")
+    if any(type(item) is not str for item in projection.evidence_blockers):
+        raise InputError("projected evidence blockers must contain exact strings")
+    interface_count = len(request.required_interface_ids)
+    projected_nodes = (
+        160
+        + sum(len(value) for value, _, _ in collections) * 8
+        + sum(len(value) for value, _, _ in nested_collections) * 2
+    )
+    if projected_nodes > MAX_JSON_NODES:
+        raise InputError("protected reference exceeds the aggregate JSON node limit")
+    return interface_count, projected_nodes
+
+
 def _validate_direct_assembly_types(assembly: InterfaceAssembly) -> None:
     if (
         type(assembly.occurrences) is not tuple
@@ -1480,17 +2546,31 @@ def _validate_direct_assembly_types(assembly: InterfaceAssembly) -> None:
     ):
         raise InputError("assembly object contains non-canonical field types")
     for occurrence in assembly.occurrences:
-        if (
-            type(occurrence) is not InterfaceOccurrence
-            or type(occurrence.occurrence_id) is not str
-            or type(occurrence.component) is not ComponentManifest
-            or (
-                occurrence.anchor_transform is not None
-                and type(occurrence.anchor_transform) is not ExactRigidTransform
-            )
+        if type(occurrence.occurrence_id) is not str or (
+            occurrence.anchor_transform is not None
+            and type(occurrence.anchor_transform) is not ExactRigidTransform
         ):
             raise InputError("assembly occurrence contains non-canonical field types")
-        component = occurrence.component
+        if assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA:
+            if type(occurrence) is not InterfaceOccurrence:
+                raise InputError(
+                    "assembly v0.1 occurrence contains non-canonical field types"
+                )
+            component = occurrence.component
+        elif assembly.schema_version == INTERFACE_ASSEMBLY_SCHEMA_V2:
+            if type(occurrence) is not InterfaceOccurrenceV2:
+                raise InputError(
+                    "assembly v0.2 occurrence contains non-canonical field types"
+                )
+            if type(occurrence.participant) is ReleasedComponentParticipant:
+                component = occurrence.participant.component
+            elif type(occurrence.participant) is ProtectedReferenceParticipant:
+                _validate_protected_direct_types(occurrence.participant)
+                continue
+            else:
+                raise InputError("assembly participant has a non-canonical type")
+        else:
+            raise InputError("assembly object has an unsupported schema version")
         if (
             type(component.schema_version) is not str
             or type(component.component_id) is not str
@@ -1597,6 +2677,227 @@ def _validate_direct_assembly_types(assembly: InterfaceAssembly) -> None:
                 )
 
 
+def _validate_protected_direct_types(
+    participant: ProtectedReferenceParticipant,
+) -> None:
+    _precheck_protected_collections(participant)
+    reference = participant.reference_component
+    request = participant.design_around_request
+    projection = participant.design_around_projection
+    scalar_values = (
+        reference.schema_version,
+        reference.component_id,
+        reference.manufacturer,
+        reference.part_number,
+        reference.revision,
+        reference.title,
+        reference.source_model_digest,
+        reference.unit,
+        reference.occupied_bounds_evidence_id,
+        reference.content_digest,
+        request.schema_version,
+        request.request_id,
+        request.reference_component_digest,
+        request.occurrence_id,
+        request.content_digest,
+        projection.schema_version,
+        projection.request_digest,
+        projection.reference_component_digest,
+        projection.occurrence_id,
+        projection.content_digest,
+    )
+    if any(type(value) is not str for value in scalar_values):
+        raise InputError("protected reference contains non-canonical scalar types")
+    if not _is_direct_exact_box(reference.occupied_bounds):
+        raise InputError("protected occupied bounds contain non-canonical exact values")
+    strings = list(scalar_values)
+    strings.append(reference.occupied_bounds.unit)
+    for record in reference.evidence:
+        if (
+            type(record.evidence_id) is not str
+            or type(record.kind) is not EvidenceKind
+            or type(record.artifact_digest) is not str
+            or type(record.authority) is not EvidenceAuthority
+            or type(record.locator) is not str
+            or not _is_exact_string_tuple(record.supports)
+        ):
+            raise InputError("protected evidence contains non-canonical nested values")
+        strings.extend(
+            (
+                record.evidence_id,
+                record.artifact_digest,
+                record.locator,
+                *record.supports,
+            )
+        )
+    for frame in reference.reference_frames:
+        if (
+            type(frame.frame_id) is not str
+            or type(frame.role) is not FrameRole
+            or not _is_direct_exact_transform(frame.transform)
+            or type(frame.evidence_id) is not str
+            or (
+                frame.interface_kind is not None
+                and type(frame.interface_kind) is not InterfaceKind
+            )
+            or (
+                frame.direction is not None
+                and type(frame.direction) is not InterfaceDirection
+            )
+            or (frame.medium is not None and type(frame.medium) is not str)
+            or type(frame.properties) is not tuple
+            or any(
+                type(item) is not tuple
+                or len(item) != 2
+                or type(item[0]) is not str
+                or type(item[1]) is not str
+                for item in frame.properties
+            )
+        ):
+            raise InputError(
+                "protected reference frame contains non-canonical nested values"
+            )
+        strings.extend((frame.frame_id, frame.evidence_id, frame.transform.unit))
+        if frame.medium is not None:
+            strings.append(frame.medium)
+        strings.extend(value for pair in frame.properties for value in pair)
+    for envelope in reference.envelopes:
+        if (
+            type(envelope.envelope_id) is not str
+            or type(envelope.purpose) is not EnvelopePurpose
+            or not _is_direct_exact_box(envelope.bounds)
+            or type(envelope.evidence_id) is not str
+        ):
+            raise InputError("protected envelope contains non-canonical nested values")
+        strings.extend(
+            (envelope.envelope_id, envelope.bounds.unit, envelope.evidence_id)
+        )
+    if reference.mass_properties is not None:
+        mass = reference.mass_properties
+        if (
+            not _is_bounded_fraction(mass.mass_kg)
+            or not _is_direct_exact_vector(mass.center_of_mass)
+            or type(mass.inertia_kg_mm2) is not tuple
+            or len(mass.inertia_kg_mm2) != 6
+            or any(not _is_bounded_fraction(item) for item in mass.inertia_kg_mm2)
+            or type(mass.evidence_id) is not str
+        ):
+            raise InputError(
+                "protected mass properties contain non-canonical nested values"
+            )
+        strings.append(mass.evidence_id)
+    for item in reference.known_fields:
+        if type(item.field_path) is not str or type(item.evidence_id) is not str:
+            raise InputError("protected known field contains non-canonical values")
+        strings.extend((item.field_path, item.evidence_id))
+    for item in reference.unknown_fields:
+        if any(
+            type(value) is not str
+            for value in (item.field_path, item.consequence, item.required_evidence)
+        ):
+            raise InputError("protected unknown field contains non-canonical values")
+        strings.extend((item.field_path, item.consequence, item.required_evidence))
+    for gate in reference.evidence_gates:
+        if (
+            type(gate.name) is not GateName
+            or type(gate.disposition) is not GateDisposition
+            or not _is_exact_string_tuple(gate.evidence_ids)
+            or type(gate.rationale) is not str
+        ):
+            raise InputError("protected evidence gate contains non-canonical values")
+        strings.extend((*gate.evidence_ids, gate.rationale))
+    for clearance in request.clearances:
+        if type(clearance.envelope_id) is not str or not _is_bounded_fraction(
+            clearance.clearance_mm
+        ):
+            raise InputError("protected clearance contains non-canonical values")
+        strings.append(clearance.envelope_id)
+    strings.extend(request.required_interface_ids)
+    for constraint in projection.protected_constraints:
+        if (
+            type(constraint.constraint_id) is not str
+            or type(constraint.kind) is not ConstraintKind
+            or type(constraint.source_path) is not str
+            or type(constraint.value_digest) is not str
+            or not _is_exact_string_tuple(constraint.evidence_ids)
+            or (
+                constraint.authority is not None
+                and type(constraint.authority) is not EvidenceAuthority
+            )
+            or type(constraint.resolution_required) is not bool
+        ):
+            raise InputError(
+                "protected constraint contains non-canonical nested values"
+            )
+        strings.extend(
+            (
+                constraint.constraint_id,
+                constraint.source_path,
+                constraint.value_digest,
+                *constraint.evidence_ids,
+            )
+        )
+    for binding in projection.flexible_bindings:
+        if type(binding.domain) is not DesignDomain or not _is_exact_string_tuple(
+            binding.interface_ids
+        ):
+            raise InputError(
+                "protected flexible binding contains non-canonical nested values"
+            )
+        strings.extend(binding.interface_ids)
+    strings.extend(projection.evidence_blockers)
+    for index, value in enumerate(strings):
+        _utf8_string(value, f"protected_reference string[{index}]")
+    if (
+        request.required_interface_ids
+        and AllowedOperation.ATTACH_AT_DECLARED_INTERFACE
+        not in reference.allowed_operations
+    ):
+        raise InputError(
+            "protected_reference physical interfaces require "
+            "attach_at_declared_interface authority"
+        )
+
+
+def _is_exact_string_tuple(value: Any) -> bool:
+    return type(value) is tuple and all(type(item) is str for item in value)
+
+
+def _is_bounded_fraction(value: Any) -> bool:
+    return (
+        type(value) is Fraction
+        and abs(value.numerator).bit_length() <= MAX_EXACT_SCALAR_CHARACTERS * 4
+        and value.denominator.bit_length() <= MAX_EXACT_SCALAR_CHARACTERS * 4
+    )
+
+
+def _is_direct_exact_vector(value: Any) -> bool:
+    return type(value) is ExactVector3 and all(
+        _is_bounded_fraction(item) for item in (value.x, value.y, value.z)
+    )
+
+
+def _is_direct_exact_transform(value: Any) -> bool:
+    return (
+        type(value) is ExactRigidTransform
+        and _is_direct_exact_vector(value.translation)
+        and type(value.rotation) is ExactRotation3
+        and _is_direct_exact_vector(value.rotation.x_axis)
+        and _is_direct_exact_vector(value.rotation.y_axis)
+        and _is_direct_exact_vector(value.rotation.z_axis)
+        and type(value.unit) is str
+    )
+
+
+def _is_direct_exact_box(value: Any) -> bool:
+    return (
+        type(value) is ExactBox
+        and _is_direct_exact_vector(value.minimum)
+        and _is_direct_exact_vector(value.maximum)
+        and type(value.unit) is str
+    )
+
+
 def _is_exact_xyz_mapping(value: Any, *, value_type: type[Any]) -> bool:
     if type(value) is not _MAPPING_PROXY_TYPE:
         return False
@@ -1620,11 +2921,34 @@ def _validate_direct_result_types(result: InterfaceAssemblyResult) -> None:
             and type(result.inconclusive_reason) is not InconclusiveReason
         )
         or type(result.schema_version) is not str
+        or (
+            result.assembly_digest is not None
+            and type(result.assembly_digest) is not str
+        )
+        or type(result.participant_evidence) is not tuple
+        or (
+            result.release_eligible is not None
+            and type(result.release_eligible) is not bool
+        )
     ):
         raise InputError("result object contains non-canonical field types")
+    if result.schema_version == INTERFACE_ASSEMBLY_RESULT_SCHEMA:
+        if (
+            result.assembly_digest is not None
+            or result.participant_evidence
+            or result.release_eligible is not None
+        ):
+            raise InputError("v0.1 result cannot contain v0.2 evidence fields")
+    elif result.schema_version == INTERFACE_ASSEMBLY_RESULT_SCHEMA_V2:
+        _sha256(result.assembly_digest, "interface_assembly_result.assembly_digest")
+        if result.release_eligible is not False:
+            raise InputError("v0.2 result is placement evidence, not a release")
+    else:
+        raise InputError("result object has an unsupported schema version")
     if (
         len(result.occurrence_transforms) > MAX_OCCURRENCES
         or len(result.selected_alternatives) > MAX_MATES
+        or len(result.participant_evidence) > MAX_OCCURRENCES
     ):
         raise InputError("result object exceeds direct collection limits")
     if any(
@@ -1642,6 +2966,53 @@ def _validate_direct_result_types(result: InterfaceAssemblyResult) -> None:
         for item in result.selected_alternatives
     ):
         raise InputError("result selection contains non-canonical field types")
+    for summary in result.participant_evidence:
+        if (
+            type(summary) is not ParticipantEvidenceSummary
+            or type(summary.occurrence_id) is not str
+            or type(summary.participant_kind) is not ParticipantKind
+            or type(summary.subject_digest) is not str
+            or (
+                summary.request_digest is not None
+                and type(summary.request_digest) is not str
+            )
+            or (
+                summary.projection_digest is not None
+                and type(summary.projection_digest) is not str
+            )
+            or type(summary.protected_constraint_count) is not int
+            or type(summary.resolution_required_count) is not int
+            or type(summary.authority_counts) is not tuple
+            or len(summary.authority_counts) > len(EvidenceAuthority) + 1
+            or any(
+                type(item) is not tuple
+                or len(item) != 2
+                or type(item[0]) is not str
+                or type(item[1]) is not int
+                for item in summary.authority_counts
+            )
+            or type(summary.exposed_interfaces) is not tuple
+            or len(summary.exposed_interfaces) > 256
+            or type(summary.evidence_blockers) is not tuple
+            or len(summary.evidence_blockers) > 4_096
+            or any(type(item) is not str for item in summary.evidence_blockers)
+        ):
+            raise InputError("result evidence summary has non-canonical field types")
+        for interface in summary.exposed_interfaces:
+            if (
+                type(interface) is not InterfaceEvidenceSummary
+                or type(interface.interface_id) is not str
+                or (
+                    interface.authority is not None
+                    and type(interface.authority) is not EvidenceAuthority
+                )
+                or not _is_exact_string_tuple(interface.evidence_ids)
+                or len(interface.evidence_ids) > 128
+                or type(interface.resolution_required) is not bool
+            ):
+                raise InputError(
+                    "result interface evidence has non-canonical field types"
+                )
 
 
 def _preflight_json(raw: Any) -> None:
@@ -1659,21 +3030,43 @@ def _preflight_json(raw: Any) -> None:
                 f"interface_assembly exceeds the {MAX_JSON_DEPTH}-level depth limit"
             )
         if type(value) is dict:
+            if nodes + len(pending) + len(value) > MAX_JSON_NODES:
+                raise InputError(
+                    f"interface_assembly exceeds the {MAX_JSON_NODES}-node input limit"
+                )
             for key, child in value.items():
                 if type(key) is not str:
                     raise InputError(f"{field} field names must be strings")
+                _utf8_string(key, f"{field} field name")
                 if len(key) > MAX_JSON_STRING_CHARACTERS:
                     raise InputError(f"{field} contains an overlong field name")
                 pending.append((child, depth + 1, f"{field}.{key}"))
         elif type(value) is list:
+            if nodes + len(pending) + len(value) > MAX_JSON_NODES:
+                raise InputError(
+                    f"interface_assembly exceeds the {MAX_JSON_NODES}-node input limit"
+                )
             pending.extend(
                 (child, depth + 1, f"{field}[{index}]")
                 for index, child in enumerate(value)
             )
         elif type(value) is str:
+            _utf8_string(value, field)
             if len(value) > MAX_JSON_STRING_CHARACTERS:
                 raise InputError(
                     f"{field} exceeds the {MAX_JSON_STRING_CHARACTERS}-character limit"
                 )
-        elif type(value) not in {int, bool, type(None)}:
+        elif type(value) is int:
+            if value.bit_length() > MAX_JSON_INTEGER_BITS:
+                raise InputError(
+                    f"{field} exceeds the {MAX_JSON_INTEGER_BITS}-bit integer limit"
+                )
+        elif type(value) not in {bool, type(None)}:
             raise InputError(f"{field} is not a supported JSON value")
+
+
+def _utf8_string(value: str, field: str) -> None:
+    try:
+        value.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise InputError(f"{field} must contain valid UTF-8 scalar values") from exc
