@@ -28,6 +28,15 @@ from .interface_assembly import (
 from .materials import MaterialRecord
 from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
+from .reference_component import (
+    DesignAroundProjection,
+    DesignAroundRequest,
+    ReferenceComponentManifest,
+    project_design_around,
+    seal_design_around_request,
+    seal_reference_component,
+    verify_design_around_projection,
+)
 from .release import ComponentReleaseRequest, derive_component_manifest
 from .sketch import (
     CircularHole,
@@ -51,6 +60,8 @@ __all__ = [
     "ComponentInterface",
     "ComponentManifest",
     "ComponentReleaseRequest",
+    "DesignAroundProjection",
+    "DesignAroundRequest",
     "DesignProgram",
     "DesignTask",
     "DesignWorkspace",
@@ -70,6 +81,7 @@ __all__ = [
     "ObjectRef",
     "PartOccurrence",
     "PrismaticPart",
+    "ReferenceComponentManifest",
     "RigidTransform",
     "SelectedMateAlternative",
     "SketchConstraint",
@@ -84,11 +96,15 @@ __all__ = [
     "compile_part",
     "compile_sketch_extrusion",
     "derive_component_manifest",
+    "project_design_around",
+    "seal_design_around_request",
+    "seal_reference_component",
     "solve_axial_case",
     "solve_constraints",
     "solve_interface_assembly",
     "verify_bundle",
     "verify_cad_bundle",
+    "verify_design_around_projection",
     "verify_interface_assembly_result",
     "verify_interface_assembly_solution",
     "verify_sketch_bundle",

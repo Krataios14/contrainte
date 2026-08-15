@@ -6,6 +6,7 @@ from dataclasses import replace
 from fractions import Fraction
 from unittest.mock import patch
 
+import contrainte
 from contrainte.canonical import digest
 from contrainte.component import InterfaceDirection, InterfaceKind
 from contrainte.errors import InputError, IntegrityError
@@ -210,6 +211,16 @@ def parsed_request(manifest: ReferenceComponentManifest) -> DesignAroundRequest:
 
 
 class ReferenceComponentTests(unittest.TestCase):
+    def test_public_api_exports_design_around_kernel(self) -> None:
+        self.assertIs(contrainte.ReferenceComponentManifest, ReferenceComponentManifest)
+        self.assertIs(contrainte.DesignAroundRequest, DesignAroundRequest)
+        self.assertIs(contrainte.DesignAroundProjection, DesignAroundProjection)
+        self.assertIs(contrainte.project_design_around, project_design_around)
+        self.assertIs(
+            contrainte.verify_design_around_projection,
+            verify_design_around_projection,
+        )
+
     def test_manifest_round_trip_and_digest(self) -> None:
         document = seal_reference_component(base_payload())
         manifest = ReferenceComponentManifest.from_dict(document)
