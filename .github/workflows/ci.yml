@@ -26,3 +26,7 @@ jobs:
         run: |
           python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/mounting-plate
           python -m contrainte cad verify artifacts/mounting-plate/plate.demo.cad-bundle.json
+      - name: Exercise exact assembly CLI
+        run: |
+          python -m contrainte assembly compile examples/plate-pair-assembly.json --output-dir artifacts/plate-pair
+          python -m contrainte assembly verify artifacts/plate-pair/assembly.plate-pair.assembly-bundle.json
