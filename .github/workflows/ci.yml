@@ -34,3 +34,5 @@ jobs:
         run: |
           python -m contrainte solid compile examples/pedestal-bracket.json --output-dir artifacts/pedestal-bracket
           python -m contrainte solid verify artifacts/pedestal-bracket/bracket.demo.solid-bundle.json
+          python -m contrainte component derive artifacts/pedestal-bracket/bracket.demo.solid-bundle.json examples/pedestal-component.json --output artifacts/pedestal-bracket/component.fixture.demo.json
+          python -m contrainte component verify artifacts/pedestal-bracket/component.fixture.demo.json
