@@ -1,0 +1,150 @@
+{
+  "schema_version": "contrainte.sketch-extrusion/0.2",
+  "part_id": "plate.circular.demo",
+  "revision": "A",
+  "title": "Fully constrained plate with circular through-holes",
+  "material": {
+    "applicability": {"condition": "room-temperature demonstration only"},
+    "designation": "316L demonstration record",
+    "evidence": [
+      {
+        "authority": "Contrainte synthetic fixture",
+        "content": "Synthetic demonstration material record; not for engineering release.",
+        "content_digest": "sha256:d8509eb6540afc9d5ecf2d751c875535523f9b720207da5b230a3d0a9aff66c6",
+        "evidence_id": "EVD-MAT-SYNTHETIC",
+        "kind": "synthetic",
+        "locator": "examples/mounting-plate.json",
+        "retrieved_at": "2026-08-15T00:00:00+02:00",
+        "revision": "1",
+        "title": "Synthetic 316L-like properties"
+      }
+    ],
+    "material_id": "material.synthetic.316l",
+    "properties": {
+      "density": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-DENSITY",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "density",
+        "quantity": {"kind": "density", "unit": "kg/m3", "value": "8000"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "elastic_modulus": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-ELASTIC",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "elastic_modulus",
+        "quantity": {"kind": "pressure", "unit": "GPa", "value": "193"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "poisson_ratio": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-POISSON",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "poisson_ratio",
+        "quantity": {"kind": "dimensionless", "unit": "1", "value": "0.29"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "yield_strength": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-YIELD",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "yield_strength",
+        "quantity": {"kind": "pressure", "unit": "MPa", "value": "215"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      }
+    },
+    "revision": "1",
+    "schema_version": "contrainte.material-record/0.1",
+    "standard": "synthetic; no standard claim"
+  },
+  "manufacturing": {
+    "process": "3-axis milling",
+    "minimum_feature_size": {"kind": "length", "unit": "mm", "value": "2"}
+  },
+  "limits": {
+    "maximum_mass": {"kind": "mass", "unit": "kg", "value": "1"},
+    "maximum_bounding_box": {
+      "x": {"kind": "length", "unit": "mm", "value": "110"},
+      "y": {"kind": "length", "unit": "mm", "value": "70"},
+      "z": {"kind": "length", "unit": "mm", "value": "20"}
+    }
+  },
+  "points": [
+    {"point_id": "c0"},
+    {"point_id": "c1"},
+    {"point_id": "p0"},
+    {"point_id": "p1"},
+    {"point_id": "p2"},
+    {"point_id": "p3"}
+  ],
+  "constraints": [
+    {
+      "constraint_id": "c01",
+      "kind": "fixed",
+      "point_id": "c0",
+      "x": {"kind": "length", "unit": "mm", "value": "20"},
+      "y": {"kind": "length", "unit": "mm", "value": "30"}
+    },
+    {
+      "constraint_id": "c02",
+      "kind": "fixed",
+      "point_id": "c1",
+      "x": {"kind": "length", "unit": "mm", "value": "80"},
+      "y": {"kind": "length", "unit": "mm", "value": "30"}
+    },
+    {
+      "constraint_id": "c03",
+      "kind": "fixed",
+      "point_id": "p0",
+      "x": {"kind": "length", "unit": "mm", "value": "0"},
+      "y": {"kind": "length", "unit": "mm", "value": "0"}
+    },
+    {
+      "constraint_id": "c04",
+      "kind": "fixed",
+      "point_id": "p1",
+      "x": {"kind": "length", "unit": "mm", "value": "100"},
+      "y": {"kind": "length", "unit": "mm", "value": "0"}
+    },
+    {
+      "constraint_id": "c05",
+      "kind": "fixed",
+      "point_id": "p2",
+      "x": {"kind": "length", "unit": "mm", "value": "100"},
+      "y": {"kind": "length", "unit": "mm", "value": "60"}
+    },
+    {
+      "constraint_id": "c06",
+      "kind": "fixed",
+      "point_id": "p3",
+      "x": {"kind": "length", "unit": "mm", "value": "0"},
+      "y": {"kind": "length", "unit": "mm", "value": "60"}
+    }
+  ],
+  "profile": {
+    "outer_loop": ["p0", "p1", "p2", "p3"],
+    "inner_loops": [],
+    "circular_holes": [
+      {
+        "circle_id": "hole.01",
+        "center_point_id": "c0",
+        "diameter": {"kind": "length", "unit": "mm", "value": "10"}
+      },
+      {
+        "circle_id": "hole.02",
+        "center_point_id": "c1",
+        "diameter": {"kind": "length", "unit": "mm", "value": "10"}
+      }
+    ]
+  },
+  "extrusion_distance": {"kind": "length", "unit": "mm", "value": "10"}
+}
