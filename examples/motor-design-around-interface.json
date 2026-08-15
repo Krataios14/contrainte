@@ -1,0 +1,237 @@
+{
+  "candidate_budget": 4,
+  "mates": [
+    {
+      "alternatives": [
+        {
+          "alternative_id": "direct-bus",
+          "preference_rank": 0,
+          "second_interface_in_first_interface": {
+            "basis": {
+              "x_axis": {"x": "1", "y": "0", "z": "0"},
+              "y_axis": {"x": "0", "y": "1", "z": "0"},
+              "z_axis": {"x": "0", "y": "0", "z": "1"}
+            },
+            "schema_version": "contrainte.exact-rigid-transform/0.1",
+            "translation": {"x": "0", "y": "0", "z": "0"},
+            "unit": "mm"
+          }
+        }
+      ],
+      "first": {"interface_id": "dc-output", "occurrence_id": "inverter"},
+      "mate_id": "dc-link",
+      "property_keys": ["nominal_voltage"],
+      "second": {"interface_id": "dc-input", "occurrence_id": "motor"}
+    },
+    {
+      "alternatives": [
+        {
+          "alternative_id": "coaxial",
+          "preference_rank": 0,
+          "second_interface_in_first_interface": {
+            "basis": {
+              "x_axis": {"x": "1", "y": "0", "z": "0"},
+              "y_axis": {"x": "0", "y": "1", "z": "0"},
+              "z_axis": {"x": "0", "y": "0", "z": "1"}
+            },
+            "schema_version": "contrainte.exact-rigid-transform/0.1",
+            "translation": {"x": "0", "y": "0", "z": "0"},
+            "unit": "mm"
+          }
+        },
+        {
+          "alternative_id": "reversed-about-y",
+          "preference_rank": 1,
+          "second_interface_in_first_interface": {
+            "basis": {
+              "x_axis": {"x": "-1", "y": "0", "z": "0"},
+              "y_axis": {"x": "0", "y": "1", "z": "0"},
+              "z_axis": {"x": "0", "y": "0", "z": "-1"}
+            },
+            "schema_version": "contrainte.exact-rigid-transform/0.1",
+            "translation": {"x": "0", "y": "0", "z": "0"},
+            "unit": "mm"
+          }
+        }
+      ],
+      "first": {"interface_id": "shaft-output", "occurrence_id": "motor"},
+      "mate_id": "shaft",
+      "property_keys": ["shaft_standard"],
+      "second": {"interface_id": "shaft-input", "occurrence_id": "reducer"}
+    }
+  ],
+  "occurrences": [
+    {
+      "component": {
+        "artifacts": [
+          {
+            "artifact_id": "bundle",
+            "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "locator": "inverter.bundle.json",
+            "media_type": "application/json",
+            "role": "engineering_bundle"
+          }
+        ],
+        "capabilities": [],
+        "component_id": "example.inverter",
+        "geometry_bounds": {
+          "frame": "engineering_bundle",
+          "maximum": {"x": "120", "y": "90", "z": "45"},
+          "minimum": {"x": "-120", "y": "-90", "z": "-45"},
+          "unit": "mm"
+        },
+        "interfaces": [
+          {
+            "direction": "output",
+            "frame": {
+              "basis": {
+                "x_axis": {"x": "1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "1"}
+              },
+              "origin": {"x": "0", "y": "0", "z": "0"},
+              "reference": "engineering_bundle",
+              "unit": "mm"
+            },
+            "interface_id": "dc-output",
+            "kind": "electrical",
+            "medium": "dc",
+            "properties": {"nominal_voltage": "400 V"}
+          }
+        ],
+        "lifecycle_state": "concept",
+        "metadata": {},
+        "qualification": "unqualified_demonstration",
+        "revision": "A",
+        "schema_version": "contrainte.component-manifest/0.3",
+        "source_bundle_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "title": "Synthetic inverter interface fixture"
+      },
+      "occurrence_id": "inverter"
+    },
+    {
+      "anchor_transform": {
+        "basis": {
+          "x_axis": {"x": "1", "y": "0", "z": "0"},
+          "y_axis": {"x": "0", "y": "1", "z": "0"},
+          "z_axis": {"x": "0", "y": "0", "z": "1"}
+        },
+        "schema_version": "contrainte.exact-rigid-transform/0.1",
+        "translation": {"x": "1000", "y": "500", "z": "300"},
+        "unit": "mm"
+      },
+      "component": {
+        "artifacts": [
+          {
+            "artifact_id": "bundle",
+            "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "locator": "motor.bundle.json",
+            "media_type": "application/json",
+            "role": "engineering_bundle"
+          }
+        ],
+        "capabilities": [],
+        "component_id": "example.existing-motor",
+        "geometry_bounds": {
+          "frame": "engineering_bundle",
+          "maximum": {"x": "250", "y": "160", "z": "160"},
+          "minimum": {"x": "-250", "y": "-160", "z": "-160"},
+          "unit": "mm"
+        },
+        "interfaces": [
+          {
+            "direction": "input",
+            "frame": {
+              "basis": {
+                "x_axis": {"x": "1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "1"}
+              },
+              "origin": {"x": "0", "y": "120", "z": "80"},
+              "reference": "engineering_bundle",
+              "unit": "mm"
+            },
+            "interface_id": "dc-input",
+            "kind": "electrical",
+            "medium": "dc",
+            "properties": {"nominal_voltage": "400 V"}
+          },
+          {
+            "direction": "output",
+            "frame": {
+              "basis": {
+                "x_axis": {"x": "1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "1"}
+              },
+              "origin": {"x": "250", "y": "0", "z": "0"},
+              "reference": "engineering_bundle",
+              "unit": "mm"
+            },
+            "interface_id": "shaft-output",
+            "kind": "mechanical",
+            "medium": "dry",
+            "properties": {"shaft_standard": "IEC-B5-24mm"}
+          }
+        ],
+        "lifecycle_state": "concept",
+        "metadata": {},
+        "qualification": "unqualified_demonstration",
+        "revision": "supplier-revision-unverified",
+        "schema_version": "contrainte.component-manifest/0.3",
+        "source_bundle_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "title": "Synthetic protected motor interface fixture"
+      },
+      "occurrence_id": "motor"
+    },
+    {
+      "component": {
+        "artifacts": [
+          {
+            "artifact_id": "bundle",
+            "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "locator": "reducer.bundle.json",
+            "media_type": "application/json",
+            "role": "engineering_bundle"
+          }
+        ],
+        "capabilities": [],
+        "component_id": "example.reducer",
+        "geometry_bounds": {
+          "frame": "engineering_bundle",
+          "maximum": {"x": "180", "y": "140", "z": "140"},
+          "minimum": {"x": "-180", "y": "-140", "z": "-140"},
+          "unit": "mm"
+        },
+        "interfaces": [
+          {
+            "direction": "input",
+            "frame": {
+              "basis": {
+                "x_axis": {"x": "1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "1"}
+              },
+              "origin": {"x": "-180", "y": "0", "z": "0"},
+              "reference": "engineering_bundle",
+              "unit": "mm"
+            },
+            "interface_id": "shaft-input",
+            "kind": "mechanical",
+            "medium": "dry",
+            "properties": {"shaft_standard": "IEC-B5-24mm"}
+          }
+        ],
+        "lifecycle_state": "concept",
+        "metadata": {},
+        "qualification": "unqualified_demonstration",
+        "revision": "A",
+        "schema_version": "contrainte.component-manifest/0.3",
+        "source_bundle_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "title": "Synthetic reducer interface fixture"
+      },
+      "occurrence_id": "reducer"
+    }
+  ],
+  "schema_version": "contrainte.interface-assembly/0.1"
+}
