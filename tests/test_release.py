@@ -22,6 +22,9 @@ SOLID_EXAMPLE = Path(__file__).parents[1] / "examples" / "pedestal-bracket.json"
 SKETCH_EXAMPLE = (
     Path(__file__).parents[1] / "examples" / "constrained-pocket-plate.json"
 )
+CIRCULAR_SKETCH_EXAMPLE = (
+    Path(__file__).parents[1] / "examples" / "circular-through-hole-plate.json"
+)
 
 
 class ComponentReleaseTests(unittest.TestCase):
@@ -221,6 +224,39 @@ class ComponentReleaseTests(unittest.TestCase):
                     ArtifactRole.EXACT_GEOMETRY,
                     ArtifactRole.MESH,
                     ArtifactRole.DRAWING,
+                },
+            )
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_circular_sketch_bundle_derives_geometry_backed_component(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sketch = load_sketch_extrusion(CIRCULAR_SKETCH_EXAMPLE)
+            compile_sketch_extrusion(sketch, root)
+            bundle_path = root / f"{sketch.part_id}.sketch-bundle.json"
+            manifest = derive_component_manifest(
+                bundle_path,
+                ComponentReleaseRequest.from_dict(self.request_document()),
+            )
+            manifest_path = root / "component.fixture.demo.json"
+            write_component_manifest(
+                manifest_path, manifest, bundle_path=bundle_path
+            )
+
+            report = verify_local_component_manifest(manifest_path)
+
+            self.assertEqual(report["status"], "verified")
+            self.assertEqual(
+                manifest.metadata["engineering_bundle_schema"],
+                "contrainte.sketch-bundle/0.2",
+            )
+            self.assertEqual(
+                manifest.geometry_bounds.as_dict(),  # type: ignore[union-attr]
+                {
+                    "frame": "engineering_bundle",
+                    "unit": "mm",
+                    "minimum": {"x": "0", "y": "0", "z": "0"},
+                    "maximum": {"x": "100", "y": "60", "z": "10"},
                 },
             )
 
