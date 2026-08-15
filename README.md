@@ -18,6 +18,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Canonical JSON with stable SHA-256 bundle identifiers.
 - Content-addressed component manifests with typed interfaces, exact rational interface frames, and exact-geometry bounds reproduced from the source B-rep.
 - Exact rational rigid-transform algebra with proper-rotation proofs, composition, inversion, point application, and bounded canonical evidence.
+- Bounded exact interface-assembly search with ranked mating alternatives, cycle closure, explicit inconclusive states, and an independent first-feasible replay oracle.
 - Evidence-backed material records with density, elasticity, yield, and Poisson claims.
 - A strict prismatic-part feature model with dimensional tolerances, worst-case edge-distance checks, and worst-case hole web checks.
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
@@ -99,6 +100,15 @@ python -m contrainte component verify artifacts/pedestal-bracket/component.fixtu
 
 Bounds containment is deliberately conservative: it does not claim that the frame is attached to a face, hole, or mating surface.
 
+Place component occurrences through exact semantic interface equations and replay the complete search result:
+
+```powershell
+python -m contrainte interface-assembly solve interface-assembly.json --output interface-result.json
+python -m contrainte interface-assembly verify interface-assembly.json interface-result.json
+```
+
+The interface solver is a semantic placement gate, not a collision or physics solver. A production design-around flow must verify each referenced component release and run the resulting poses through exact geometry, tolerance, load, access, manufacturing, and qualification checks.
+
 Inspect a design program and initialize durable state:
 
 ```powershell
@@ -115,6 +125,7 @@ The current CAD slice proves the authority chain on rectangular milled parts, po
 
 The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
 The [exact-transform contract](docs/EXACT_TRANSFORMS.md) defines local-to-parent composition semantics, strict rational invariants, and its evidence boundary.
+The [interface-assembly contract](docs/INTERFACE_ASSEMBLIES.md) defines exact mating equations, ranked bounded search, independent terminal replay, and design-around nonclaims.
 The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
 The [solid-program contract](docs/SOLID_PROGRAMS.md) defines the exact feature DAG, deterministic boolean semantics, enforced limits, and deliberate topology boundary.
 The [sketch-extrusion contract](docs/SKETCHES.md) defines exact linear constraint solving, profile topology, kernel cross-checks, and deliberate geometric limits.
