@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+from .artifacts import artifact_descriptor, package_version, verify_artifacts
 from .canonical import decimal_text, digest, dumps_pretty, loads_strict
 from .errors import ExecutionError, InputError, IntegrityError
 from .geometry import (
@@ -452,8 +451,8 @@ def compile_solid_program(
     if not export_stl(shape, stl_path, tolerance=0.01, angular_tolerance=0.1):
         raise ExecutionError("Open CASCADE failed to export solid-program STL geometry")
     artifacts = [
-        _artifact(step_path, "model/step", "exact_geometry"),
-        _artifact(stl_path, "model/stl", "visualization_mesh"),
+        artifact_descriptor(step_path, "model/step", "exact_geometry"),
+        artifact_descriptor(stl_path, "model/stl", "visualization_mesh"),
     ]
     content = {
         "schema_version": SOLID_BUNDLE_SCHEMA,
@@ -464,18 +463,10 @@ def compile_solid_program(
         "analysis": analysis,
         "kernel": {
             "backend": "build123d-opencascade",
-            "build123d_version": _package_version("build123d"),
-            "opencascade_distribution_version": _package_version("cadquery-ocp"),
+            "build123d_version": package_version("build123d"),
+            "opencascade_distribution_version": package_version("cadquery-ocp"),
         },
-        "checks": [
-            {"id": "SOLID-SCHEMA", "status": "passed"},
-            {"id": "SOLID-FEATURE-DAG", "status": "passed"},
-            {"id": "SOLID-MINIMUM-FEATURE", "status": "passed"},
-            {"id": "SOLID-BREP-VALIDITY", "status": "passed"},
-            {"id": "SOLID-SINGLE-BODY", "status": "passed"},
-            {"id": "SOLID-MASS-LIMIT", "status": "passed"},
-            {"id": "SOLID-ENVELOPE-LIMIT", "status": "passed"},
-        ],
+        "checks": _solid_checks(),
         "artifacts": artifacts,
     }
     bundle = {"digest": digest(content), "content": content}
@@ -497,22 +488,48 @@ def verify_solid_bundle(bundle_path: str | Path) -> dict[str, str]:
         raise IntegrityError("solid bundle digest mismatch")
     if content.get("schema_version") != SOLID_BUNDLE_SCHEMA:
         raise IntegrityError("unsupported solid bundle schema")
+    required_content = {
+        "schema_version",
+        "qualification",
+        "program_digest",
+        "material_digest",
+        "program",
+        "analysis",
+        "kernel",
+        "checks",
+        "artifacts",
+    }
+    if set(content) != required_content:
+        raise IntegrityError("solid bundle content has unsupported or missing fields")
+    if content.get("qualification") != "unqualified_demonstration":
+        raise IntegrityError("solid bundle qualification is unsupported")
     program = SolidProgram.from_dict(content.get("program"))
     if program.program_digest != content.get("program_digest"):
         raise IntegrityError("embedded solid program does not match its declared digest")
+    if program.material.material_digest != content.get("material_digest"):
+        raise IntegrityError("embedded material does not match its declared digest")
     analysis, _ = analyze_solid_program(program)
     if analysis != content.get("analysis"):
         raise IntegrityError("solid-program analysis does not reproduce")
     if analysis["status"] != "passed":
         raise IntegrityError("embedded solid program no longer passes its constraints")
-    for artifact in content.get("artifacts", []):
-        if not isinstance(artifact, dict):
-            raise IntegrityError("solid artifact descriptor must be an object")
-        artifact_path = path.parent / artifact.get("path", "")
-        if not artifact_path.is_file():
-            raise IntegrityError(f"solid artifact is missing: {artifact_path.name}")
-        if _file_digest(artifact_path) != artifact.get("digest"):
-            raise IntegrityError(f"solid artifact digest mismatch: {artifact_path.name}")
+    expected_kernel = {
+        "backend": "build123d-opencascade",
+        "build123d_version": package_version("build123d"),
+        "opencascade_distribution_version": package_version("cadquery-ocp"),
+    }
+    if content.get("kernel") != expected_kernel:
+        raise IntegrityError("solid kernel identity does not match the reproducing runtime")
+    if content.get("checks") != _solid_checks():
+        raise IntegrityError("solid checks are false, incomplete, or unsupported")
+    verify_artifacts(
+        path.parent,
+        content.get("artifacts"),
+        {
+            f"{program.part_id}.step": ("model/step", "exact_geometry"),
+            f"{program.part_id}.stl": ("model/stl", "visualization_mesh"),
+        },
+    )
     return {
         "status": "verified",
         "bundle_digest": bundle["digest"],
@@ -583,26 +600,13 @@ def _build_nodes(program: SolidProgram) -> Mapping[str, Any]:
     return shapes
 
 
-def _file_digest(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(block)
-    return f"sha256:{hasher.hexdigest()}"
-
-
-def _artifact(path: Path, media_type: str, role: str) -> dict[str, Any]:
-    return {
-        "path": path.name,
-        "media_type": media_type,
-        "role": role,
-        "digest": _file_digest(path),
-        "size_bytes": path.stat().st_size,
-    }
-
-
-def _package_version(distribution: str) -> str:
-    try:
-        return version(distribution)
-    except PackageNotFoundError:
-        return "unknown"
+def _solid_checks() -> list[dict[str, str]]:
+    return [
+        {"id": "SOLID-SCHEMA", "status": "passed"},
+        {"id": "SOLID-FEATURE-DAG", "status": "passed"},
+        {"id": "SOLID-MINIMUM-FEATURE", "status": "passed"},
+        {"id": "SOLID-BREP-VALIDITY", "status": "passed"},
+        {"id": "SOLID-SINGLE-BODY", "status": "passed"},
+        {"id": "SOLID-MASS-LIMIT", "status": "passed"},
+        {"id": "SOLID-ENVELOPE-LIMIT", "status": "passed"},
+    ]

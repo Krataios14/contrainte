@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from decimal import Decimal
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+from .artifacts import artifact_descriptor, package_version, verify_artifacts
 from .canonical import decimal_text, digest, dumps_pretty, loads_strict
 from .errors import ExecutionError, InputError, IntegrityError
 from .materials import MaterialRecord
@@ -302,21 +301,11 @@ def compile_part(part: PrismaticPart, output_directory: str | Path) -> dict[str,
         raise ExecutionError("Open CASCADE failed to export STL geometry")
     svg_path.write_text(_top_view_svg(part), encoding="utf-8", newline="\n")
     artifacts = [
-        _artifact(step_path, "model/step", "exact_geometry"),
-        _artifact(stl_path, "model/stl", "mesh"),
-        _artifact(svg_path, "image/svg+xml", "drawing"),
+        artifact_descriptor(step_path, "model/step", "exact_geometry"),
+        artifact_descriptor(stl_path, "model/stl", "mesh"),
+        artifact_descriptor(svg_path, "image/svg+xml", "drawing"),
     ]
-    expected_mm3 = Decimal(part.analytical_properties()["net_volume_m3"]) * Decimal(
-        1000000000
-    )
-    kernel_mm3 = Decimal(str(shape.volume))
-    relative_error = (
-        abs(kernel_mm3 - expected_mm3) / expected_mm3 if expected_mm3 else Decimal(0)
-    )
-    if relative_error > Decimal("0.00000001"):
-        raise ExecutionError(
-            "kernel volume does not agree with the independently calculated volume"
-        )
+    kernel = _kernel_report(part, shape)
     content = {
         "schema_version": CAD_BUNDLE_SCHEMA,
         "qualification": "unqualified_demonstration",
@@ -324,21 +313,8 @@ def compile_part(part: PrismaticPart, output_directory: str | Path) -> dict[str,
         "material_digest": part.material.material_digest,
         "part": part.as_dict(),
         "analytical_properties": part.analytical_properties(),
-        "kernel": {
-            "backend": "build123d-opencascade",
-            "build123d_version": _package_version("build123d"),
-            "opencascade_distribution_version": _package_version("cadquery-ocp"),
-            "shape_valid": True,
-            "volume_mm3": decimal_text(kernel_mm3),
-            "relative_volume_error": decimal_text(relative_error),
-        },
-        "checks": [
-            {"id": "CAD-SCHEMA", "status": "passed"},
-            {"id": "CAD-EDGE-DISTANCE", "status": "passed"},
-            {"id": "CAD-WEB-THICKNESS", "status": "passed"},
-            {"id": "CAD-BREP-VALIDITY", "status": "passed"},
-            {"id": "CAD-INDEPENDENT-VOLUME", "status": "passed"},
-        ],
+        "kernel": kernel,
+        "checks": _cad_checks(),
         "artifacts": artifacts,
     }
     bundle = {"digest": digest(content), "content": content}
@@ -396,19 +372,42 @@ def verify_cad_bundle(bundle_path: str | Path) -> dict[str, str]:
         raise IntegrityError("CAD bundle digest mismatch")
     if content.get("schema_version") != CAD_BUNDLE_SCHEMA:
         raise IntegrityError("unsupported CAD bundle schema")
+    required_content = {
+        "schema_version",
+        "qualification",
+        "part_digest",
+        "material_digest",
+        "part",
+        "analytical_properties",
+        "kernel",
+        "checks",
+        "artifacts",
+    }
+    if set(content) != required_content:
+        raise IntegrityError("CAD bundle content has unsupported or missing fields")
+    if content.get("qualification") != "unqualified_demonstration":
+        raise IntegrityError("CAD bundle qualification is unsupported")
     part = PrismaticPart.from_dict(content.get("part"))
     if part.part_digest != content.get("part_digest"):
         raise IntegrityError("embedded part does not match its declared digest")
+    if part.material.material_digest != content.get("material_digest"):
+        raise IntegrityError("embedded material does not match its declared digest")
     if part.analytical_properties() != content.get("analytical_properties"):
         raise IntegrityError("CAD analytical properties do not reproduce")
-    for artifact in content.get("artifacts", []):
-        if not isinstance(artifact, dict):
-            raise IntegrityError("CAD artifact descriptor must be an object")
-        artifact_path = path.parent / artifact.get("path", "")
-        if not artifact_path.is_file():
-            raise IntegrityError(f"CAD artifact is missing: {artifact_path.name}")
-        if _file_digest(artifact_path) != artifact.get("digest"):
-            raise IntegrityError(f"CAD artifact digest mismatch: {artifact_path.name}")
+    expected_kernel = _kernel_report(part, build_part_shape(part))
+    if content.get("kernel") != expected_kernel:
+        raise IntegrityError("CAD kernel analysis does not reproduce")
+    if content.get("checks") != _cad_checks():
+        raise IntegrityError("CAD checks are false, incomplete, or unsupported")
+    verify_artifacts(
+        path.parent,
+        content.get("artifacts"),
+        {
+            f"{part.part_id}.step": ("model/step", "exact_geometry"),
+            f"{part.part_id}.stl": ("model/stl", "mesh"),
+            f"{part.part_id}.svg": ("image/svg+xml", "drawing"),
+        },
+    )
     return {
         "status": "verified",
         "bundle_digest": bundle["digest"],
@@ -416,29 +415,36 @@ def verify_cad_bundle(bundle_path: str | Path) -> dict[str, str]:
     }
 
 
-def _file_digest(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(block)
-    return f"sha256:{hasher.hexdigest()}"
-
-
-def _artifact(path: Path, media_type: str, role: str) -> dict[str, Any]:
+def _kernel_report(part: PrismaticPart, shape: Any) -> dict[str, Any]:
+    expected_mm3 = Decimal(part.analytical_properties()["net_volume_m3"]) * Decimal(
+        1000000000
+    )
+    kernel_mm3 = Decimal(str(shape.volume))
+    relative_error = (
+        abs(kernel_mm3 - expected_mm3) / expected_mm3 if expected_mm3 else Decimal(0)
+    )
+    if relative_error > Decimal("0.00000001"):
+        raise ExecutionError(
+            "kernel volume does not agree with the independently calculated volume"
+        )
     return {
-        "path": path.name,
-        "media_type": media_type,
-        "role": role,
-        "digest": _file_digest(path),
-        "size_bytes": path.stat().st_size,
+        "backend": "build123d-opencascade",
+        "build123d_version": package_version("build123d"),
+        "opencascade_distribution_version": package_version("cadquery-ocp"),
+        "shape_valid": True,
+        "volume_mm3": decimal_text(kernel_mm3),
+        "relative_volume_error": decimal_text(relative_error),
     }
 
 
-def _package_version(distribution: str) -> str:
-    try:
-        return version(distribution)
-    except PackageNotFoundError:
-        return "unknown"
+def _cad_checks() -> list[dict[str, str]]:
+    return [
+        {"id": "CAD-SCHEMA", "status": "passed"},
+        {"id": "CAD-EDGE-DISTANCE", "status": "passed"},
+        {"id": "CAD-WEB-THICKNESS", "status": "passed"},
+        {"id": "CAD-BREP-VALIDITY", "status": "passed"},
+        {"id": "CAD-INDEPENDENT-VOLUME", "status": "passed"},
+    ]
 
 
 def _top_view_svg(part: PrismaticPart) -> str:
