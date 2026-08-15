@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[cad,dev]"
+      - name: Lint
+        run: ruff check src tests
+      - name: Test
+        run: python -m unittest discover -s tests -v
+      - name: Exercise exact CAD CLI
+        run: |
+          python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/mounting-plate
+          python -m contrainte cad verify artifacts/mounting-plate/plate.demo.cad-bundle.json
