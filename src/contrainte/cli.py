@@ -18,6 +18,12 @@ from .pipeline import (
     write_bundle,
 )
 from .program import load_program
+from .release import (
+    derive_component_manifest,
+    load_release_request,
+    verify_local_component_manifest,
+    write_component_manifest,
+)
 from .solid import compile_solid_program, load_solid_program, verify_solid_bundle
 from .workspace import DesignWorkspace
 
@@ -91,6 +97,23 @@ def _parser() -> argparse.ArgumentParser:
         "verify", help="rebuild solid analysis and verify every exact artifact"
     )
     solid_verify.add_argument("bundle", help="path to a solid bundle JSON file")
+
+    component_parser = subcommands.add_parser(
+        "component", help="derive and verify local component releases"
+    )
+    component_commands = component_parser.add_subparsers(
+        dest="component_command", required=True
+    )
+    component_derive = component_commands.add_parser(
+        "derive", help="derive an unqualified component from a verified CAD bundle"
+    )
+    component_derive.add_argument("bundle", help="verified CAD evidence bundle")
+    component_derive.add_argument("request", help="component release request JSON")
+    component_derive.add_argument("--output", "-o", required=True)
+    component_verify = component_commands.add_parser(
+        "verify", help="verify local component artifacts and source CAD evidence"
+    )
+    component_verify.add_argument("manifest", help="component manifest JSON")
 
     program_parser = subcommands.add_parser(
         "program", help="inspect deterministic design-program graphs"
@@ -184,6 +207,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if args.solid_command == "verify":
                 print(json.dumps(verify_solid_bundle(args.bundle), sort_keys=True))
+                return 0
+        if args.command == "component":
+            if args.component_command == "derive":
+                manifest = derive_component_manifest(
+                    args.bundle, load_release_request(args.request)
+                )
+                write_component_manifest(
+                    args.output, manifest, bundle_path=args.bundle
+                )
+                print(manifest.manifest_digest)
+                return 0
+            if args.component_command == "verify":
+                print(
+                    json.dumps(
+                        verify_local_component_manifest(args.manifest), sort_keys=True
+                    )
+                )
                 return 0
         if args.command == "program":
             program = load_program(args.input)

@@ -7,6 +7,7 @@ from .component import ArtifactRef, ComponentInterface, ComponentManifest
 from .materials import MaterialRecord
 from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
+from .release import ComponentReleaseRequest, derive_component_manifest
 from .solid import SolidProgram
 from .workspace import DesignWorkspace, ObjectRef
 
@@ -17,6 +18,7 @@ __all__ = [
     "AxialResult",
     "ComponentInterface",
     "ComponentManifest",
+    "ComponentReleaseRequest",
     "DesignProgram",
     "DesignTask",
     "DesignWorkspace",
@@ -30,6 +32,7 @@ __all__ = [
     "ThroughHole",
     "compile_bundle",
     "compile_part",
+    "derive_component_manifest",
     "solve_axial_case",
     "verify_bundle",
     "verify_cad_bundle",
