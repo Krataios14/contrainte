@@ -3,13 +3,16 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
 
-from .canonical import digest
+from .canonical import decimal_text, digest
 from .errors import InputError
 
-COMPONENT_SCHEMA = "contrainte.component-manifest/0.1"
+COMPONENT_SCHEMA_V1 = "contrainte.component-manifest/0.1"
+COMPONENT_SCHEMA = "contrainte.component-manifest/0.2"
+_SUPPORTED_COMPONENT_SCHEMAS = {COMPONENT_SCHEMA_V1, COMPONENT_SCHEMA}
 _DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
@@ -77,6 +80,74 @@ def _string_map(raw: Any, field: str) -> Mapping[str, str]:
     ):
         raise InputError(f"{field} must map strings to strings")
     return dict(raw)
+
+
+def _finite_decimal(value: Any, field: str) -> Decimal:
+    if not isinstance(value, str):
+        raise InputError(f"{field} must be a decimal string")
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation as exc:
+        raise InputError(f"{field} is not a valid decimal: {value!r}") from exc
+    if not parsed.is_finite():
+        raise InputError(f"{field} must be finite")
+    return parsed
+
+
+@dataclass(frozen=True)
+class ExactGeometryBounds:
+    """Axis-aligned bounds reproduced from the exact engineering geometry."""
+
+    frame: str
+    unit: str
+    minimum: Mapping[str, Decimal]
+    maximum: Mapping[str, Decimal]
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> ExactGeometryBounds:
+        if not isinstance(raw, dict):
+            raise InputError(f"{field} must be an object")
+        _reject_unknown_keys(raw, {"frame", "unit", "minimum", "maximum"}, field)
+        frame = _required_string(raw, "frame", field)
+        if frame != "engineering_bundle":
+            raise InputError(f"{field}.frame must be 'engineering_bundle'")
+        unit = _required_string(raw, "unit", field)
+        if unit != "mm":
+            raise InputError(f"{field}.unit must be 'mm'")
+        axes: dict[str, Mapping[str, Decimal]] = {}
+        for bound in ("minimum", "maximum"):
+            values = raw.get(bound)
+            if not isinstance(values, dict) or set(values) != {"x", "y", "z"}:
+                raise InputError(f"{field}.{bound} must contain exactly x, y, and z")
+            axes[bound] = {
+                axis: _finite_decimal(values[axis], f"{field}.{bound}.{axis}")
+                for axis in ("x", "y", "z")
+            }
+        for axis in ("x", "y", "z"):
+            if axes["maximum"][axis] <= axes["minimum"][axis]:
+                raise InputError(
+                    f"{field}.maximum.{axis} must be greater than minimum.{axis}"
+                )
+        return cls(frame, unit, axes["minimum"], axes["maximum"])
+
+    @property
+    def size_mm(self) -> Mapping[str, Decimal]:
+        return {
+            axis: self.maximum[axis] - self.minimum[axis]
+            for axis in ("x", "y", "z")
+        }
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "frame": self.frame,
+            "unit": self.unit,
+            "minimum": {
+                axis: decimal_text(self.minimum[axis]) for axis in ("x", "y", "z")
+            },
+            "maximum": {
+                axis: decimal_text(self.maximum[axis]) for axis in ("x", "y", "z")
+            },
+        }
 
 
 @dataclass(frozen=True)
@@ -180,6 +251,7 @@ class ComponentManifest:
     artifacts: tuple[ArtifactRef, ...]
     interfaces: tuple[ComponentInterface, ...]
     capabilities: tuple[str, ...]
+    geometry_bounds: ExactGeometryBounds | None
     metadata: Mapping[str, str]
 
     @classmethod
@@ -199,13 +271,22 @@ class ComponentManifest:
                 "artifacts",
                 "interfaces",
                 "capabilities",
+                "geometry_bounds",
                 "metadata",
             },
             field,
         )
         schema_version = _required_string(raw, "schema_version", field)
-        if schema_version != COMPONENT_SCHEMA:
+        if schema_version not in _SUPPORTED_COMPONENT_SCHEMAS:
             raise InputError(f"unsupported component schema: {schema_version!r}")
+        if schema_version == COMPONENT_SCHEMA_V1 and "geometry_bounds" in raw:
+            raise InputError(
+                f"{field}.geometry_bounds requires component schema {COMPONENT_SCHEMA!r}"
+            )
+        if schema_version == COMPONENT_SCHEMA and "geometry_bounds" not in raw:
+            raise InputError(
+                f"{field}.geometry_bounds is required by component schema {COMPONENT_SCHEMA!r}"
+            )
         try:
             lifecycle_state = LifecycleState(
                 _required_string(raw, "lifecycle_state", field)
@@ -279,6 +360,13 @@ class ComponentManifest:
             artifacts=artifacts,
             interfaces=interfaces,
             capabilities=tuple(capabilities_raw),
+            geometry_bounds=(
+                ExactGeometryBounds.from_dict(
+                    raw["geometry_bounds"], field=f"{field}.geometry_bounds"
+                )
+                if "geometry_bounds" in raw
+                else None
+            ),
             metadata=_string_map(raw.get("metadata", {}), f"{field}.metadata"),
         )
 
@@ -287,7 +375,7 @@ class ComponentManifest:
         return digest(self.as_dict())
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        document = {
             "schema_version": self.schema_version,
             "component_id": self.component_id,
             "revision": self.revision,
@@ -300,3 +388,6 @@ class ComponentManifest:
             "capabilities": list(self.capabilities),
             "metadata": dict(self.metadata),
         }
+        if self.geometry_bounds is not None:
+            document["geometry_bounds"] = self.geometry_bounds.as_dict()
+        return document
