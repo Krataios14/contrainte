@@ -6,8 +6,8 @@ import unittest
 from importlib.util import find_spec
 from pathlib import Path
 
-from contrainte.canonical import loads_strict
-from contrainte.errors import ExecutionError, InputError
+from contrainte.canonical import digest, dumps_pretty, loads_strict
+from contrainte.errors import ExecutionError, InputError, IntegrityError
 from contrainte.solid import (
     SolidProgram,
     analyze_solid_program,
@@ -274,6 +274,15 @@ class SolidProgramTests(unittest.TestCase):
             self.assertEqual(
                 verify_solid_bundle(bundle_path)["bundle_digest"], first["digest"]
             )
+
+            false_role = copy.deepcopy(first)
+            false_role["content"]["artifacts"][0]["role"] = "visualization_mesh"
+            false_role["digest"] = digest(false_role["content"])
+            bundle_path.write_text(
+                dumps_pretty(false_role), encoding="utf-8", newline="\n"
+            )
+            with self.assertRaisesRegex(IntegrityError, "role mismatch"):
+                verify_solid_bundle(bundle_path)
 
 
 if __name__ == "__main__":

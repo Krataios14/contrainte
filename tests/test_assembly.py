@@ -12,8 +12,8 @@ from contrainte.assembly import (
     compile_assembly,
     verify_assembly_bundle,
 )
-from contrainte.canonical import loads_strict
-from contrainte.errors import ExecutionError, InputError
+from contrainte.canonical import digest, dumps_pretty, loads_strict
+from contrainte.errors import ExecutionError, InputError, IntegrityError
 
 PART_EXAMPLE = Path(__file__).parents[1] / "examples" / "mounting-plate.json"
 
@@ -155,6 +155,15 @@ class AssemblyTests(unittest.TestCase):
             self.assertTrue(
                 (Path(first_directory) / f"{assembly.assembly_id}.step").is_file()
             )
+
+            false_checks = copy.deepcopy(first)
+            false_checks["content"]["checks"] = []
+            false_checks["digest"] = digest(false_checks["content"])
+            bundle_path.write_text(
+                dumps_pretty(false_checks), encoding="utf-8", newline="\n"
+            )
+            with self.assertRaisesRegex(IntegrityError, "checks"):
+                verify_assembly_bundle(bundle_path)
 
     def test_unknown_assembly_field_is_rejected(self) -> None:
         document = copy.deepcopy(self.document())

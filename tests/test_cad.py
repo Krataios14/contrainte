@@ -8,8 +8,8 @@ from importlib.util import find_spec
 from pathlib import Path
 
 from contrainte.cad import PrismaticPart, compile_part, load_part, verify_cad_bundle
-from contrainte.canonical import loads_strict
-from contrainte.errors import InputError
+from contrainte.canonical import digest, dumps_pretty, loads_strict
+from contrainte.errors import InputError, IntegrityError
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "mounting-plate.json"
 
@@ -68,6 +68,24 @@ class ConstrainedCadTests(unittest.TestCase):
             self.assertEqual(
                 verify_cad_bundle(bundle_path)["bundle_digest"], bundle["digest"]
             )
+
+            missing_artifacts = copy.deepcopy(bundle)
+            missing_artifacts["content"]["artifacts"] = []
+            missing_artifacts["digest"] = digest(missing_artifacts["content"])
+            bundle_path.write_text(
+                dumps_pretty(missing_artifacts), encoding="utf-8", newline="\n"
+            )
+            with self.assertRaisesRegex(IntegrityError, "artifact set"):
+                verify_cad_bundle(bundle_path)
+
+            false_kernel = copy.deepcopy(bundle)
+            false_kernel["content"]["kernel"]["volume_mm3"] = "1"
+            false_kernel["digest"] = digest(false_kernel["content"])
+            bundle_path.write_text(
+                dumps_pretty(false_kernel), encoding="utf-8", newline="\n"
+            )
+            with self.assertRaisesRegex(IntegrityError, "kernel analysis"):
+                verify_cad_bundle(bundle_path)
 
     @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
     def test_opencascade_exports_are_reproducible(self) -> None:
