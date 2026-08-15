@@ -24,6 +24,11 @@ from .release import (
     verify_local_component_manifest,
     write_component_manifest,
 )
+from .sketch import (
+    compile_sketch_extrusion,
+    load_sketch_extrusion,
+    verify_sketch_bundle,
+)
 from .solid import compile_solid_program, load_solid_program, verify_solid_bundle
 from .workspace import DesignWorkspace
 
@@ -98,6 +103,26 @@ def _parser() -> argparse.ArgumentParser:
     )
     solid_verify.add_argument("bundle", help="path to a solid bundle JSON file")
 
+    sketch_parser = subcommands.add_parser(
+        "sketch", help="compile and verify constrained sketch extrusions"
+    )
+    sketch_commands = sketch_parser.add_subparsers(
+        dest="sketch_command", required=True
+    )
+    sketch_compile = sketch_commands.add_parser(
+        "compile", help="solve a constrained polygon profile and extrude it"
+    )
+    sketch_compile.add_argument(
+        "input", help="path to a sketch-extrusion JSON file"
+    )
+    sketch_compile.add_argument(
+        "--output-dir", "-o", required=True, help="directory for generated artifacts"
+    )
+    sketch_verify = sketch_commands.add_parser(
+        "verify", help="reproduce sketch analysis and verify every artifact"
+    )
+    sketch_verify.add_argument("bundle", help="path to a sketch bundle JSON file")
+
     component_parser = subcommands.add_parser(
         "component", help="derive and verify local component releases"
     )
@@ -105,9 +130,12 @@ def _parser() -> argparse.ArgumentParser:
         dest="component_command", required=True
     )
     component_derive = component_commands.add_parser(
-        "derive", help="derive an unqualified component from a verified CAD bundle"
+        "derive",
+        help="derive an unqualified component from verified exact-geometry evidence",
     )
-    component_derive.add_argument("bundle", help="verified CAD evidence bundle")
+    component_derive.add_argument(
+        "bundle", help="verified CAD, solid, assembly, or sketch evidence bundle"
+    )
     component_derive.add_argument("request", help="component release request JSON")
     component_derive.add_argument("--output", "-o", required=True)
     component_verify = component_commands.add_parser(
@@ -207,6 +235,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if args.solid_command == "verify":
                 print(json.dumps(verify_solid_bundle(args.bundle), sort_keys=True))
+                return 0
+        if args.command == "sketch":
+            if args.sketch_command == "compile":
+                bundle = compile_sketch_extrusion(
+                    load_sketch_extrusion(args.input), args.output_dir
+                )
+                print(bundle["digest"])
+                return 0
+            if args.sketch_command == "verify":
+                print(json.dumps(verify_sketch_bundle(args.bundle), sort_keys=True))
                 return 0
         if args.command == "component":
             if args.component_command == "derive":

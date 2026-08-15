@@ -8,6 +8,15 @@ from .materials import MaterialRecord
 from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
 from .release import ComponentReleaseRequest, derive_component_manifest
+from .sketch import (
+    SketchConstraint,
+    SketchExtrusion,
+    SketchPoint,
+    SketchProfile,
+    compile_sketch_extrusion,
+    solve_constraints,
+    verify_sketch_bundle,
+)
 from .solid import SolidProgram
 from .workspace import DesignWorkspace, ObjectRef
 
@@ -28,14 +37,21 @@ __all__ = [
     "PartOccurrence",
     "PrismaticPart",
     "RigidTransform",
+    "SketchConstraint",
+    "SketchExtrusion",
+    "SketchPoint",
+    "SketchProfile",
     "SolidProgram",
     "ThroughHole",
     "compile_bundle",
     "compile_part",
+    "compile_sketch_extrusion",
     "derive_component_manifest",
     "solve_axial_case",
+    "solve_constraints",
     "verify_bundle",
     "verify_cad_bundle",
+    "verify_sketch_bundle",
 ]
 
 __version__ = "0.1.0"
