@@ -4,7 +4,7 @@
 
 Contrainte owns the engineering definition of a physical component. A consuming system may arrange, schedule, simulate, visualize, procure, operate, or monitor that component, but it must not silently replace the component's dimensional, material, solver, contamination, cleaning, or evidence semantics.
 
-The first public boundary is `contrainte.component-manifest/0.1`. It is intentionally small. It lets another system identify a component release, verify content-addressed artifacts, discover typed interfaces, and inspect lifecycle and qualification state.
+The public boundary supports legacy `contrainte.component-manifest/0.1` documents and emits `contrainte.component-manifest/0.2` for geometry-backed derivations. It lets another system identify a component release, verify content-addressed artifacts, discover typed interfaces, inspect lifecycle and qualification state, and enforce a conservative spatial envelope from reproduced exact geometry.
 
 ## Authority boundary
 
@@ -55,6 +55,12 @@ The `engineering_bundle` artifact matching `source_bundle_digest` is mandatory. 
 For a locally derived component, `source_bundle_digest` is the SHA-256 of the serialized engineering-bundle file. The bundle's canonical semantic digest is retained separately as `metadata.engineering_bundle_content_digest`. This distinction lets a consumer prove both the exact retrieved bytes and the canonical engineering content they contain.
 
 `contrainte component derive` accepts only a verified CAD, solid, or assembly bundle. It always emits `lifecycle_state=concept` and `qualification=unqualified_demonstration`; neither can be supplied by the request. It carries every bundle artifact into the manifest and writes repository-local locators only when the manifest is beside the bundle. `contrainte component verify` re-runs the source bundle verifier, checks every byte digest, rejects path traversal, rejects missing geometry, and detects lifecycle or qualification promotion.
+
+## Exact geometry bounds
+
+Schema 0.2 requires `geometry_bounds`. The minimum and maximum x, y, and z coordinates are decimal strings in millimetres in the engineering bundle's coordinate frame. Contrainte derives them from the reproduced Open CASCADE boundary representation; release requests cannot supply or override them. Local verification rebuilds the exact geometry and rejects altered bounds even when the surrounding manifest remains structurally valid.
+
+Bounds are an axis-aligned broad-phase contract, not a substitute for shape-level collision, tolerance, motion-sweep, access, maintenance, or human-clearance analysis. A consumer may enlarge the envelope, but must not claim that a smaller envelope contains the component.
 
 ## Interfaces
 

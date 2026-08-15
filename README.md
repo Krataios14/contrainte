@@ -16,7 +16,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Claims that retain basis, status, applicability, and evidence links.
 - A deterministic analytical axial-tension solver.
 - Canonical JSON with stable SHA-256 bundle identifiers.
-- Content-addressed component manifests with typed physical and control interfaces.
+- Content-addressed component manifests with typed interfaces and exact-geometry bounds reproduced from the source B-rep.
 - Evidence-backed material records with density, elasticity, yield, and Poisson claims.
 - A strict prismatic-part feature model with dimensional tolerances, worst-case edge-distance checks, and worst-case hole web checks.
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
