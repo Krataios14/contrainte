@@ -20,6 +20,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Evidence-backed material records with density, elasticity, yield, and Poisson claims.
 - A strict prismatic-part feature model with dimensional tolerances, worst-case edge-distance checks, and worst-case hole web checks.
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
+- Exact rigid assemblies with exhaustive pairwise interference and minimum-clearance checks, reproducible STEP/STL exports, and independently reproducible analysis.
 - Strict design-program DAGs with declared work products, execution authority, acceptance criteria, and human gates.
 - Content-addressed resumable workspaces that detect state or object tampering.
 - Isolated subscription-CLI adapters for Codex, Claude, or two independent candidates.
@@ -47,6 +48,13 @@ python -m contrainte cad compile examples/mounting-plate.json --output-dir artif
 python -m contrainte cad verify artifacts/mounting-plate/plate.demo.cad-bundle.json
 ```
 
+Compile a multi-part assembly only after every exact pair passes interference and clearance checks:
+
+```powershell
+python -m contrainte assembly compile examples/plate-pair-assembly.json --output-dir artifacts/plate-pair
+python -m contrainte assembly verify artifacts/plate-pair/assembly.plate-pair.assembly-bundle.json
+```
+
 Inspect a design program and initialize durable state:
 
 ```powershell
@@ -59,9 +67,10 @@ Both examples use synthetic data and are explicitly unsuitable for engineering r
 
 ## Near-term development sequence
 
-The current CAD slice proves the authority chain on a rectangular milled part with through-holes; it is not yet a general feature modeller. The next geometry gates are a versioned general feature graph, sketch constraint solving, persistent semantic topology, assemblies, tolerance analysis, drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
+The current CAD slice proves the authority chain on rectangular milled parts with through-holes and exact rigid assemblies; it is not yet a general feature modeller. The next geometry gates are a versioned general feature graph, sketch constraint solving, persistent semantic topology, tolerance analysis, drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
 
 The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
+The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
 
 ## Repository policy
 
