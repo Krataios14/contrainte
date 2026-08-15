@@ -2,11 +2,11 @@
 
 Contrainte is an evidence-first engineering compiler for constrained physical design. The long-term system joins editable parametric CAD, source-aware commercial parts, contextual materials, verified physics, contamination analysis, cleaning analysis, and controlled engineering records.
 
-The central rule is simple: AI may propose, but deterministic engines, evidence, and named reviewers establish authority.
+The central rule is: AI may propose, but deterministic engines, evidence, and named reviewers establish authority.
 
-This public repository is at its first executable engineering milestone. It contains the complete [technical specification](TECHNICAL_SPEC.md), a deterministic evidence core, a constrained Open CASCADE CAD path, and a durable design-program runtime. It is intentionally a library: higher-level products can compose its exact components, task graphs, and evidence artifacts without copying private application code into the public core.
+This public repository is at its first executable engineering milestone. It contains the complete [technical specification](TECHNICAL_SPEC.md), a deterministic evidence core, a constrained Open CASCADE CAD path, and a durable design-program runtime. 
 
-Contrainte is deliberately useful as a component rather than a closed application. A factory designer, process simulator, PLM integration, or digital-twin runtime can consume a versioned component manifest without taking ownership of Contrainte's engineering semantics. The [integration contract](docs/INTEGRATION_CONTRACT.md) defines that boundary.
+Contrainte is a component rather than a closed application. A factory designer, process simulator, PLM integration, or digital-twin runtime can consume a versioned component manifest without taking ownership of Contrainte's engineering semantics. The [integration contract](docs/INTEGRATION_CONTRACT.md) defines that boundary.
 
 ## Current capabilities
 
@@ -61,7 +61,7 @@ Both examples use synthetic data and are explicitly unsuitable for engineering r
 
 The current CAD slice proves the authority chain on a rectangular milled part with through-holes; it is not yet a general feature modeller. The next geometry gates are a versioned general feature graph, sketch constraint solving, persistent semantic topology, assemblies, tolerance analysis, drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
 
-The [design-program contract](docs/DESIGN_PROGRAM.md) documents task isolation and the Codex/Claude boundary. The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
+The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
 
 ## Repository policy
 
