@@ -6,7 +6,7 @@ import itertools
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ ASSEMBLY_BUNDLE_SCHEMA = "contrainte.assembly-bundle/0.1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _INTERFERENCE_TOLERANCE_MM3 = Decimal("0.000001")
 _DISTANCE_TOLERANCE_MM = Decimal("0.000001")
+_KERNEL_REPORT_QUANTUM = Decimal("0.000000001")
 
 
 def _string(raw: Mapping[str, Any], name: str, field: str) -> str:
@@ -339,21 +340,23 @@ def analyze_assembly(assembly: Assembly) -> tuple[dict[str, Any], Any]:
     for first, second in itertools.combinations(ordered, 2):
         first_shape = placed[first.occurrence_id]
         second_shape = placed[second.occurrence_id]
-        distance = Decimal(str(first_shape.distance_to(second_shape)))
+        raw_distance = Decimal(str(first_shape.distance_to(second_shape)))
+        distance = _kernel_measurement(raw_distance)
         intersection = first_shape & second_shape
-        interference_volume = sum(
+        raw_interference_volume = sum(
             (Decimal(str(solid.volume)) for solid in intersection.solids()), Decimal(0)
         )
+        interference_volume = _kernel_measurement(raw_interference_volume)
         required = assembly.clearance_for(
             first.occurrence_id, second.occurrence_id
         ).to("mm").value
-        if interference_volume > _INTERFERENCE_TOLERANCE_MM3:
+        if raw_interference_volume > _INTERFERENCE_TOLERANCE_MM3:
             status = "interference"
             failures.append(
                 f"{first.occurrence_id}/{second.occurrence_id} interfere by "
                 f"{decimal_text(interference_volume)} mm3"
             )
-        elif distance + _DISTANCE_TOLERANCE_MM < required:
+        elif raw_distance + _DISTANCE_TOLERANCE_MM < required:
             status = "clearance_violation"
             failures.append(
                 f"{first.occurrence_id}/{second.occurrence_id} clearance "
@@ -394,9 +397,9 @@ def analyze_assembly(assembly: Assembly) -> tuple[dict[str, Any], Any]:
         "pair_count": len(pair_results),
         "total_mass_kg": decimal_text(total_mass),
         "bounding_box_mm": {
-            "x": decimal_text(Decimal(str(bounds.X))),
-            "y": decimal_text(Decimal(str(bounds.Y))),
-            "z": decimal_text(Decimal(str(bounds.Z))),
+            "x": decimal_text(_kernel_measurement(bounds.X)),
+            "y": decimal_text(_kernel_measurement(bounds.Y)),
+            "z": decimal_text(_kernel_measurement(bounds.Z)),
         },
         "pair_results": pair_results,
         "failures": failures,
@@ -526,3 +529,12 @@ def _normalize_step_occurrence_identifiers(path: Path) -> None:
         path.write_text(normalized, encoding="utf-8", newline="\n")
     except OSError as exc:
         raise ExecutionError(f"cannot normalize exported STEP file: {exc}") from exc
+
+
+def _kernel_measurement(value: Any) -> Decimal:
+    measurement = value if isinstance(value, Decimal) else Decimal(str(value))
+    if not measurement.is_finite():
+        raise ExecutionError("Open CASCADE returned a non-finite measurement")
+    with localcontext() as context:
+        context.prec = 50
+        return measurement.quantize(_KERNEL_REPORT_QUANTUM)
