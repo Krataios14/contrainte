@@ -103,11 +103,11 @@ Bounds containment is deliberately conservative: it does not claim that the fram
 Place component occurrences through exact semantic interface equations and replay the complete search result:
 
 ```powershell
-python -m contrainte interface-assembly solve interface-assembly.json --output interface-result.json
-python -m contrainte interface-assembly verify interface-assembly.json interface-result.json
+python -m contrainte interface-assembly solve examples/motor-design-around-interface.json --output artifacts/motor-design-around.result.json
+python -m contrainte interface-assembly verify examples/motor-design-around-interface.json artifacts/motor-design-around.result.json
 ```
 
-The interface solver is a semantic placement gate, not a collision or physics solver. A production design-around flow must verify each referenced component release and run the resulting poses through exact geometry, tolerance, load, access, manufacturing, and qualification checks.
+The synthetic example anchors an existing motor and solves compatible mechanical-shaft and DC-link placements around it. Its placeholder artifact digests are deliberately unqualified and are not source evidence. The interface solver is a semantic placement gate, not a collision or physics solver. A production design-around flow must verify each referenced component release and run the resulting poses through exact geometry, tolerance, load, access, manufacturing, and qualification checks.
 
 Inspect a design program and initialize durable state:
 
