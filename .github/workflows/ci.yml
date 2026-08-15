@@ -34,6 +34,10 @@ jobs:
         run: |
           python -m contrainte interface-assembly solve examples/motor-design-around-interface.json --output artifacts/motor-design-around.result.json
           python -m contrainte interface-assembly verify examples/motor-design-around-interface.json artifacts/motor-design-around.result.json
+      - name: Exercise mixed protected-reference interface assembly v0.2
+        run: |
+          python -m contrainte interface-assembly solve examples/mixed-reference-motor-interface.json --output artifacts/mixed-reference-motor-interface.result.json
+          python -m contrainte interface-assembly verify examples/mixed-reference-motor-interface.json artifacts/mixed-reference-motor-interface.result.json
       - name: Exercise geometry-backed component assembly
         run: |
           python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/component-pair-source
