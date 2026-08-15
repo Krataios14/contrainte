@@ -4,7 +4,7 @@
 
 Contrainte owns the engineering definition of a physical component. A consuming system may arrange, schedule, simulate, visualize, procure, operate, or monitor that component, but it must not silently replace the component's dimensional, material, solver, contamination, cleaning, or evidence semantics.
 
-The public boundary supports legacy `contrainte.component-manifest/0.1` documents and emits `contrainte.component-manifest/0.2` for geometry-backed derivations. It lets another system identify a component release, verify content-addressed artifacts, discover typed interfaces, inspect lifecycle and qualification state, and enforce a conservative spatial envelope from reproduced exact geometry.
+The public boundary preserves `contrainte.component-manifest/0.1` and `0.2` documents. A `contrainte.component-release-request/0.1` still derives manifest 0.2 with reproduced geometry bounds. Release request 0.2 adds exact semantic interface frames and derives component manifest 0.3. It lets another system identify a component release, verify content-addressed artifacts, discover typed and located interfaces, inspect lifecycle and qualification state, and enforce a conservative spatial envelope from reproduced exact geometry.
 
 ## Authority boundary
 
@@ -54,11 +54,11 @@ The `engineering_bundle` artifact matching `source_bundle_digest` is mandatory. 
 
 For a locally derived component, `source_bundle_digest` is the SHA-256 of the serialized engineering-bundle file. The bundle's canonical semantic digest is retained separately as `metadata.engineering_bundle_content_digest`. This distinction lets a consumer prove both the exact retrieved bytes and the canonical engineering content they contain.
 
-`contrainte component derive` accepts only a verified prismatic CAD, constrained-sketch extrusion (bundle 0.1 or circular-through-hole bundle 0.2), exact-solid, or assembly bundle. It always emits `lifecycle_state=concept` and `qualification=unqualified_demonstration`; neither can be supplied by the request. It carries every bundle artifact into the manifest and writes repository-local locators only when the manifest is beside the bundle. `contrainte component verify` re-runs the source bundle verifier, checks every byte digest, rejects path traversal, rejects missing geometry, and detects lifecycle or qualification promotion.
+`contrainte component derive` accepts only a verified prismatic CAD, constrained-sketch extrusion (bundle 0.1 or circular-through-hole bundle 0.2), exact-solid, or assembly bundle. It always emits `lifecycle_state=concept` and `qualification=unqualified_demonstration`; neither can be supplied by the request. It carries every bundle artifact into the manifest and writes repository-local locators only when the manifest is beside the bundle. `contrainte component verify` re-runs the source bundle verifier, checks every byte digest, rejects path traversal, rejects missing geometry, and detects lifecycle or qualification promotion. Manifest 0.3 also pins the canonical release-request content digest, so a changed frame or other request-derived field fails local reproduction unless the derivation record is deliberately rewritten too. This is an integrity check, not a signature or proof of authorship.
 
 ## Exact geometry bounds
 
-Schema 0.2 requires `geometry_bounds`. The minimum and maximum x, y, and z coordinates are decimal strings in millimetres in the engineering bundle's coordinate frame. Contrainte derives them from the reproduced Open CASCADE boundary representation; release requests cannot supply or override them. Local verification rebuilds the exact geometry and rejects altered bounds even when the surrounding manifest remains structurally valid.
+Schemas 0.2 and 0.3 require `geometry_bounds`. The minimum and maximum x, y, and z coordinates are decimal strings in millimetres in the engineering bundle's coordinate frame. Contrainte derives them from the reproduced Open CASCADE boundary representation; release requests cannot supply or override them. Local verification rebuilds the exact geometry and rejects altered bounds even when the surrounding manifest remains structurally valid.
 
 Bounds are an axis-aligned broad-phase contract, not a substitute for shape-level collision, tolerance, motion-sweep, access, maintenance, or human-clearance analysis. A consumer may enlarge the envelope, but must not claim that a smaller envelope contains the component.
 
@@ -66,7 +66,20 @@ Bounds are an axis-aligned broad-phase contract, not a substitute for shape-leve
 
 Interfaces describe where a component connects to its environment. Kinds are mechanical, material, electrical, utility, control, safety, and spatial. Directions are input, output, or bidirectional.
 
-Interface properties in schema 0.1 are strings. This is deliberate: the initial contract preserves vendor-neutral identifiers and declarations without pretending that a free-form property map is a complete physical port model. Later schemas will add typed quantities, coordinate frames, compatibility rules, and flow conservation while retaining deterministic migration paths.
+Interface properties remain strings. This preserves vendor-neutral declarations without pretending that a free-form property map is a complete physical port model.
+
+Release request 0.2 and component manifest 0.3 require every declared interface to carry a `frame` with:
+
+- `reference` fixed to `engineering_bundle`;
+- `unit` fixed to `mm`;
+- an x, y, and z origin encoded as finite decimal strings; and
+- x, y, and z basis axes whose components are canonical reduced rational strings.
+
+The parser proves with exact rational arithmetic that every basis vector has unit length, every pair is orthogonal, and the determinant is exactly +1. Approximate trigonometric matrices do not pass. Rational rotations such as a 3-4-5 basis are supported without tolerance decisions. Decimal and rational spellings must already be canonical and each scalar is capped at 128 characters before numeric parsing. Each origin must lie within or on the reproduced B-rep axis-aligned bounds. Boundary inclusion is intentional.
+
+This check locates a semantic frame inside the component's conservative spatial envelope. It does **not** prove that the origin lies in the solid, on a face, at a hole centre, on a mating surface, or on persistent semantic topology. The frame schema therefore has no surface-attachment field. Shape membership and topology-backed attachment require separate future evidence and a new schema.
+
+Release request 0.1 and manifests 0.1/0.2 reject framed interfaces rather than silently assigning the new meaning to an old schema. Their JSON shapes, Python construction, and derivation output remain unchanged.
 
 ## Determinism
 
@@ -77,6 +90,7 @@ Manifests are parsed without binary floating-point engineering values. Canonical
 - Patch releases may tighten validation for malformed documents but do not change valid schema 0.1 meaning.
 - Additive Python APIs may appear in minor releases.
 - A manifest shape or semantic change requires a new schema identifier.
+- Component manifest 0.3 is additive at the API level but intentionally not valid as 0.1 or 0.2 content; use release request 0.2 to create it.
 - Consumers must reject unknown schema identifiers unless an explicit migration is available.
 - Public deprecations receive a documented migration path before removal.
 

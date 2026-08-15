@@ -16,7 +16,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Claims that retain basis, status, applicability, and evidence links.
 - A deterministic analytical axial-tension solver.
 - Canonical JSON with stable SHA-256 bundle identifiers.
-- Content-addressed component manifests with typed interfaces and exact-geometry bounds reproduced from the source B-rep.
+- Content-addressed component manifests with typed interfaces, exact rational interface frames, and exact-geometry bounds reproduced from the source B-rep.
 - Evidence-backed material records with density, elasticity, yield, and Poisson claims.
 - A strict prismatic-part feature model with dimensional tolerances, worst-case edge-distance checks, and worst-case hole web checks.
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
@@ -88,6 +88,15 @@ Derive an explicitly unqualified component manifest that pins the exact bundle a
 python -m contrainte component derive artifacts/pedestal-bracket/bracket.demo.solid-bundle.json examples/pedestal-component.json --output artifacts/pedestal-bracket/component.fixture.demo.json
 python -m contrainte component verify artifacts/pedestal-bracket/component.fixture.demo.json
 ```
+
+Use the versioned framed request when a downstream assembly needs an exact engineering-bundle-local interface pose. The release compiler proves a right-handed orthonormal rational basis and checks the origin against reproduced B-rep bounds:
+
+```powershell
+python -m contrainte component derive artifacts/pedestal-bracket/bracket.demo.solid-bundle.json examples/pedestal-component-framed.json --output artifacts/pedestal-bracket/component.fixture.framed-demo.json
+python -m contrainte component verify artifacts/pedestal-bracket/component.fixture.framed-demo.json
+```
+
+Bounds containment is deliberately conservative: it does not claim that the frame is attached to a face, hole, or mating surface.
 
 Inspect a design program and initialize durable state:
 
