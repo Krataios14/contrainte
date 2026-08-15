@@ -267,3 +267,10 @@ content-addressed occurrence, enumerate only permitted interface alternatives,
 solve this semantic graph, compile the surrounding exact geometry, and run every
 applicable downstream evidence gate. AI may propose alternatives; it cannot
 promote a candidate to verified status.
+
+For locally derived `component-manifest/0.3` occurrences, the separate
+[`component-assembly/0.1` contract](COMPONENT_ASSEMBLIES.md) performs that next
+nominal-geometry gate. It replays the exact result, verifies and reconstructs each
+local component release, projects the rational poses directly into Open CASCADE,
+and rejects B-rep interference or insufficient clearance. It does not retroactively
+add geometry authority to this semantic solver or to placeholder example digests.

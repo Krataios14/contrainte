@@ -24,6 +24,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - A strict prismatic-part feature model with dimensional tolerances, worst-case edge-distance checks, and worst-case hole web checks.
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
 - Exact rigid assemblies with exhaustive pairwise interference and minimum-clearance checks, reproducible STEP/STL exports, and independently reproducible analysis.
+- Geometry-backed component assemblies that bind replayed exact interface solutions to verified local component releases, project rational poses directly into Open CASCADE matrices, and reject interference or insufficient clearance before deterministic export.
 - General exact-solid feature DAGs with boxes, cylinders, spheres, rigid transforms, boolean construction, graph validation, feature-size rules, and mass/envelope limits.
 - Fully constrained sketches solved with exact rational arithmetic, strict polygon topology, exact-diameter circular through-holes, symbolic circular-area evidence, and evidence-backed Open CASCADE extrusion.
 - Strict design-program DAGs with declared work products, execution authority, acceptance criteria, and human gates.
@@ -110,6 +111,19 @@ python -m contrainte interface-assembly verify examples/motor-design-around-inte
 
 The synthetic example anchors an existing motor and solves compatible mechanical-shaft and DC-link placements around it. Its placeholder artifact digests are deliberately unqualified and are not source evidence. The interface solver is a semantic placement gate, not a collision or physics solver. A production design-around flow must verify each referenced component release and run the resulting poses through exact geometry, tolerance, load, access, manufacturing, and qualification checks.
 
+Compile a solved interface result against B-reps reproduced from actual local component releases:
+
+```powershell
+python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/component-pair-source
+python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-left-release.json --output artifacts/component-pair-source/left.component.json
+python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-right-release.json --output artifacts/component-pair-source/right.component.json
+python -m contrainte interface-assembly verify examples/component-pair-interface.json examples/component-pair-interface-result.json
+python -m contrainte component-assembly compile examples/component-pair-assembly.json --source-root . --output-dir artifacts/component-pair-assembly
+python -m contrainte component-assembly verify artifacts/component-pair-assembly/component-pair.component-assembly-bundle.json --source-root .
+```
+
+The checked-in pair fixture is completed by its CAD, component-derive, and interface-solve commands in CI. Exact rational transforms remain semantic authority; their direct Open CASCADE matrix projection and every nominal B-rep pair decision are separately recorded. This is not tolerance, motion, joint, load, or service-space verification.
+
 Protect an existing component before surrounding design begins:
 
 ```powershell
@@ -138,6 +152,7 @@ The current CAD slice proves the authority chain on rectangular milled parts, po
 The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
 The [exact-transform contract](docs/EXACT_TRANSFORMS.md) defines local-to-parent composition semantics, strict rational invariants, and its evidence boundary.
 The [interface-assembly contract](docs/INTERFACE_ASSEMBLIES.md) defines exact mating equations, ranked bounded search, independent terminal replay, and design-around nonclaims.
+The [geometry-backed component-assembly contract](docs/COMPONENT_ASSEMBLIES.md) defines verified local-release binding, direct exact-matrix projection, nominal B-rep pair checks, and its deliberate evidence limits.
 The [reference-component contract](docs/REFERENCE_COMPONENTS.md) defines evidence ceilings, protected existing-part semantics, explicit flexible domains, and independently replayed design-around projections.
 The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
 The [solid-program contract](docs/SOLID_PROGRAMS.md) defines the exact feature DAG, deterministic boolean semantics, enforced limits, and deliberate topology boundary.
