@@ -19,6 +19,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Content-addressed component manifests with typed interfaces, exact rational interface frames, and exact-geometry bounds reproduced from the source B-rep.
 - Exact rational rigid-transform algebra with proper-rotation proofs, composition, inversion, point application, and bounded canonical evidence.
 - Bounded exact interface-assembly search with ranked mating alternatives, cycle closure, explicit inconclusive states, and an independent first-feasible replay oracle.
+- Digest-sealed reference components with evidence ceilings, physical frames, occupied/keepout/access/service envelopes, exact mass properties, unknown-field blockers, legal-workflow nonclaims, and independently replayed design-around projections.
 - Evidence-backed material records with density, elasticity, yield, and Poisson claims.
 - A strict prismatic-part feature model with dimensional tolerances, worst-case edge-distance checks, and worst-case hole web checks.
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
@@ -109,6 +110,17 @@ python -m contrainte interface-assembly verify examples/motor-design-around-inte
 
 The synthetic example anchors an existing motor and solves compatible mechanical-shaft and DC-link placements around it. Its placeholder artifact digests are deliberately unqualified and are not source evidence. The interface solver is a semantic placement gate, not a collision or physics solver. A production design-around flow must verify each referenced component release and run the resulting poses through exact geometry, tolerance, load, access, manufacturing, and qualification checks.
 
+Protect an existing component before surrounding design begins:
+
+```powershell
+python -m contrainte reference-component seal examples/reference-motor-payload.json --output artifacts/reference-motor.json
+python -m contrainte reference-component seal-request examples/reference-motor-design-around-payload.json --output artifacts/reference-motor.request.json
+python -m contrainte reference-component project artifacts/reference-motor.json artifacts/reference-motor.request.json --output artifacts/reference-motor.projection.json
+python -m contrainte reference-component verify artifacts/reference-motor.json artifacts/reference-motor.request.json artifacts/reference-motor.projection.json
+```
+
+The example deliberately retains unresolved torque-map and evidence-authority blockers. A scan or Gaussian splat may contribute observational geometry, but cannot silently become dimensional, material, mass, performance, or legal authority.
+
 Inspect a design program and initialize durable state:
 
 ```powershell
@@ -126,6 +138,7 @@ The current CAD slice proves the authority chain on rectangular milled parts, po
 The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
 The [exact-transform contract](docs/EXACT_TRANSFORMS.md) defines local-to-parent composition semantics, strict rational invariants, and its evidence boundary.
 The [interface-assembly contract](docs/INTERFACE_ASSEMBLIES.md) defines exact mating equations, ranked bounded search, independent terminal replay, and design-around nonclaims.
+The [reference-component contract](docs/REFERENCE_COMPONENTS.md) defines evidence ceilings, protected existing-part semantics, explicit flexible domains, and independently replayed design-around projections.
 The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
 The [solid-program contract](docs/SOLID_PROGRAMS.md) defines the exact feature DAG, deterministic boolean semantics, enforced limits, and deliberate topology boundary.
 The [sketch-extrusion contract](docs/SKETCHES.md) defines exact linear constraint solving, profile topology, kernel cross-checks, and deliberate geometric limits.
