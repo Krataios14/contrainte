@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import io
+import json
+import os
+import stat
+import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from decimal import ROUND_DOWN, Inexact, Rounded, localcontext
 from importlib.util import find_spec
 from pathlib import Path
@@ -9,9 +15,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import contrainte
+import contrainte.component_assembly as component_assembly_module
 from contrainte.artifacts import file_digest
 from contrainte.cad import compile_part, load_part
 from contrainte.canonical import digest, dumps_pretty, loads_strict
+from contrainte.cli import main as cli_main
 from contrainte.component_assembly import (
     ComponentAssembly,
     _compiler_pair_analysis,
@@ -23,6 +31,7 @@ from contrainte.component_assembly import (
     _verifier_place_shapes,
     compile_component_assembly,
     load_component_assembly,
+    prepare_component_assembly,
     verify_component_assembly_bundle,
 )
 from contrainte.errors import ExecutionError, InputError, IntegrityError
@@ -30,6 +39,7 @@ from contrainte.interface_assembly import (
     InterfaceAssembly,
     InterfaceAssemblyResult,
     solve_interface_assembly,
+    verify_interface_assembly_result,
 )
 from contrainte.release import (
     ComponentReleaseRequest,
@@ -108,6 +118,7 @@ class ComponentAssemblyTests(unittest.TestCase):
     def test_public_api_exports_component_assembly_certificate(self) -> None:
         self.assertIs(contrainte.ComponentAssembly, ComponentAssembly)
         self.assertIs(contrainte.compile_component_assembly, compile_component_assembly)
+        self.assertIs(contrainte.prepare_component_assembly, prepare_component_assembly)
         self.assertIs(
             contrainte.verify_component_assembly_bundle,
             verify_component_assembly_bundle,
@@ -218,6 +229,11 @@ class ComponentAssemblyTests(unittest.TestCase):
         )
         return assembly, interface_path, result_path, component_root
 
+    def _write_prepare_template(self, root: Path, assembly: ComponentAssembly) -> None:
+        (root / "assembly-template.json").write_text(
+            dumps_pretty(assembly.as_dict()), encoding="utf-8", newline="\n"
+        )
+
     def test_compiles_repeats_and_independently_verifies_real_components(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -248,6 +264,781 @@ class ComponentAssemblyTests(unittest.TestCase):
             )
             self.assertTrue((output / "component-pair.step").is_file())
             self.assertTrue((output / "component-pair.stl").is_file())
+
+    def test_prepare_rebinds_current_releases_and_closes_strict_compile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, interface_path, _, component_root = self._fixture(root)
+            interface_template = loads_strict(interface_path.read_bytes())
+            interface_template["occurrences"][0]["component"]["title"] = (
+                "Stale platform-specific template component"
+            )
+            interface_path.write_text(
+                dumps_pretty(interface_template), encoding="utf-8", newline="\n"
+            )
+
+            placeholder_digest = f"sha256:{'0' * 64}"
+            assembly_template = assembly.as_dict()
+            assembly_template["interface_assembly"]["file_digest"] = placeholder_digest
+            assembly_template["interface_result"]["file_digest"] = placeholder_digest
+            for binding in assembly_template["component_bindings"]:
+                binding["manifest_file_digest"] = placeholder_digest
+                binding["manifest_digest"] = placeholder_digest
+            assembly_template_path = root / "assembly-template.json"
+            assembly_template_path.write_text(
+                dumps_pretty(assembly_template), encoding="utf-8", newline="\n"
+            )
+
+            first = prepare_component_assembly(
+                "interface.json", "assembly-template.json", root, "prepared"
+            )
+            second = prepare_component_assembly(
+                "interface.json", "assembly-template.json", root, "prepared"
+            )
+            self.assertEqual(first, second)
+            self.assertEqual(first["status"], "prepared")
+
+            prepared_interface_path = root / first["interface_locator"]
+            prepared_result_path = root / first["result_locator"]
+            prepared_assembly_path = root / first["assembly_locator"]
+            prepared_interface = InterfaceAssembly.from_dict(
+                loads_strict(prepared_interface_path.read_bytes())
+            )
+            prepared_result = InterfaceAssemblyResult.from_dict(
+                loads_strict(prepared_result_path.read_bytes())
+            )
+            prepared_assembly = load_component_assembly(prepared_assembly_path)
+            self.assertEqual(
+                first["interface_file_digest"], file_digest(prepared_interface_path)
+            )
+            self.assertEqual(
+                first["result_file_digest"], file_digest(prepared_result_path)
+            )
+            self.assertEqual(
+                first["assembly_file_digest"], file_digest(prepared_assembly_path)
+            )
+            self.assertEqual(
+                prepared_interface_path.read_bytes(),
+                dumps_pretty(prepared_interface.as_dict()).encode("utf-8"),
+            )
+            self.assertEqual(
+                prepared_result_path.read_bytes(),
+                dumps_pretty(prepared_result.as_dict()).encode("utf-8"),
+            )
+            self.assertEqual(
+                prepared_assembly_path.read_bytes(),
+                dumps_pretty(prepared_assembly.as_dict()).encode("utf-8"),
+            )
+            self.assertTrue(
+                verify_interface_assembly_result(prepared_interface, prepared_result)
+            )
+            self.assertEqual(
+                prepared_assembly.interface_assembly.file_digest,
+                file_digest(prepared_interface_path),
+            )
+            self.assertEqual(
+                prepared_assembly.interface_result.file_digest,
+                file_digest(prepared_result_path),
+            )
+            manifests = {
+                occurrence_id: loads_strict(
+                    (component_root / f"{occurrence_id}.component.json").read_bytes()
+                )
+                for occurrence_id in ("left", "right")
+            }
+            for occurrence in prepared_interface.occurrences:
+                self.assertEqual(
+                    occurrence.component.as_dict(), manifests[occurrence.occurrence_id]
+                )
+            for binding in prepared_assembly.component_bindings:
+                manifest_path = root / binding.manifest_locator
+                manifest = prepared_interface.occurrences[
+                    0 if binding.occurrence_id == "left" else 1
+                ].component
+                self.assertEqual(
+                    binding.manifest_file_digest, file_digest(manifest_path)
+                )
+                self.assertEqual(binding.manifest_digest, manifest.manifest_digest)
+
+            bundle = compile_component_assembly(
+                prepared_assembly, root, root / "compiled"
+            )
+            report = verify_component_assembly_bundle(
+                root / "compiled" / "component-pair.component-assembly-bundle.json",
+                root,
+            )
+            self.assertEqual(bundle["digest"], report["bundle_digest"])
+
+    def test_prepare_rejects_confused_template_and_escaping_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            template = assembly.as_dict()
+            template["interface_assembly"]["locator"] = "different.json"
+            template_path = root / "assembly-template.json"
+            template_path.write_text(
+                dumps_pretty(template), encoding="utf-8", newline="\n"
+            )
+            with self.assertRaisesRegex(InputError, "supplied interface template"):
+                prepare_component_assembly(
+                    "interface.json", "assembly-template.json", root, "prepared"
+                )
+
+            template["interface_assembly"]["locator"] = "interface.json"
+            template_path.write_text(
+                dumps_pretty(template), encoding="utf-8", newline="\n"
+            )
+            with self.assertRaisesRegex(InputError, "within the source root"):
+                prepare_component_assembly(
+                    "interface.json", "assembly-template.json", root, "../outside"
+                )
+
+    def test_prepare_cli_dispatches_authoring_boundary(self) -> None:
+        report = {
+            "status": "prepared",
+            "assembly_locator": "prepared/demo.component-assembly.json",
+        }
+        with (
+            patch(
+                "contrainte.cli.prepare_component_assembly", return_value=report
+            ) as prepare,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            code = cli_main(
+                [
+                    "component-assembly",
+                    "prepare",
+                    "templates/interface.json",
+                    "templates/assembly.json",
+                    "--source-root",
+                    ".",
+                    "--output-dir",
+                    "prepared",
+                ]
+            )
+        self.assertEqual(code, 0)
+        prepare.assert_called_once_with(
+            "templates/interface.json", "templates/assembly.json", ".", "prepared"
+        )
+        self.assertEqual(loads_strict(output.getvalue()), report)
+
+    def test_prepare_staging_failures_leave_no_partial_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            original = component_assembly_module._BoundDirectory.write_new_file
+
+            for failure_after in (1, 2, 3):
+                calls = 0
+
+                def fail_after_stage(
+                    bound: object,
+                    name: str,
+                    captured: bytes,
+                    *,
+                    field: str,
+                    failure_target: int = failure_after,
+                ) -> None:
+                    nonlocal calls
+                    calls += 1
+                    original(bound, name, captured, field=field)
+                    if calls == failure_target:
+                        raise ExecutionError("injected staging failure")
+
+                with (
+                    self.subTest(failure_after=failure_after),
+                    patch(
+                        "contrainte.component_assembly._BoundDirectory.write_new_file",
+                        new=fail_after_stage,
+                    ),
+                    self.assertRaisesRegex(ExecutionError, "injected staging"),
+                ):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+                self.assertFalse((root / "publication" / "prepared").exists())
+                self.assertEqual(tuple((root / "publication").iterdir()), ())
+
+    def test_prepare_promotion_failures_restore_prior_exact_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            prepare_component_assembly(
+                "interface.json",
+                "assembly-template.json",
+                root,
+                "publication/prepared",
+            )
+            destination = root / "publication" / "prepared"
+            prior = {path.name: path.read_bytes() for path in destination.iterdir()}
+            real_rename = component_assembly_module._BoundDirectory.rename_child_handle
+
+            for failure_after in (1, 2):
+                calls = 0
+
+                def fail_after_promotion(
+                    bound: object,
+                    child: object,
+                    target: str,
+                    failure_target: int = failure_after,
+                ) -> None:
+                    nonlocal calls
+                    calls += 1
+                    real_rename(bound, child, target)
+                    if calls == failure_target:
+                        raise OSError("injected promotion failure")
+
+                with (
+                    self.subTest(failure_after=failure_after),
+                    patch(
+                        "contrainte.component_assembly._BoundDirectory.rename_child_handle",
+                        new=fail_after_promotion,
+                    ),
+                    self.assertRaisesRegex(OSError, "injected promotion"),
+                ):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+                self.assertEqual(
+                    {path.name: path.read_bytes() for path in destination.iterdir()},
+                    prior,
+                )
+                self.assertEqual(
+                    {path.name for path in (root / "publication").iterdir()},
+                    {"prepared"},
+                )
+
+            with (
+                patch(
+                    "contrainte.component_assembly._load_bound_context",
+                    side_effect=IntegrityError("injected post-promotion failure"),
+                ),
+                self.assertRaisesRegex(IntegrityError, "post-promotion"),
+            ):
+                prepare_component_assembly(
+                    "interface.json",
+                    "assembly-template.json",
+                    root,
+                    "publication/prepared",
+                )
+            self.assertEqual(
+                {path.name: path.read_bytes() for path in destination.iterdir()}, prior
+            )
+
+    def test_prepare_restores_prior_set_after_deleted_backup_cleanup_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, component_root = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            prepare_component_assembly(
+                "interface.json",
+                "assembly-template.json",
+                root,
+                "publication/prepared",
+            )
+            destination = root / "publication" / "prepared"
+            prior = {path.name: path.read_bytes() for path in destination.iterdir()}
+
+            changed_request = _release_request(
+                "component.plate-left", "edge-right", "60"
+            )
+            changed_request["title"] = "changed local platform release"
+            bundle_path = component_root / "plate.demo.cad-bundle.json"
+            changed_manifest = derive_component_manifest(
+                bundle_path,
+                ComponentReleaseRequest.from_dict(changed_request),
+            )
+            write_component_manifest(
+                component_root / "left.component.json",
+                changed_manifest,
+                bundle_path=bundle_path,
+            )
+
+            original = component_assembly_module._discard_bound_prepared_directory
+            injected = False
+
+            def fail_after_deleted_backup(*args: object, **kwargs: object) -> None:
+                nonlocal injected
+                bound_directory = args[1]
+                is_backup = ".prepared.previous-" in bound_directory.path.name
+                original(*args, **kwargs)
+                if is_backup and not injected:
+                    injected = True
+                    raise OSError("injected post-delete backup cleanup failure")
+
+            with (
+                patch(
+                    "contrainte.component_assembly._discard_bound_prepared_directory",
+                    side_effect=fail_after_deleted_backup,
+                ),
+                self.assertRaisesRegex(
+                    IntegrityError, "previous exact set was restored"
+                ),
+            ):
+                prepare_component_assembly(
+                    "interface.json",
+                    "assembly-template.json",
+                    root,
+                    "publication/prepared",
+                )
+
+            self.assertTrue(injected)
+            self.assertEqual(
+                {path.name: path.read_bytes() for path in destination.iterdir()}, prior
+            )
+            self.assertEqual(
+                {path.name for path in destination.parent.iterdir()}, {"prepared"}
+            )
+
+            prepare_component_assembly(
+                "interface.json",
+                "assembly-template.json",
+                root,
+                "publication/prepared",
+            )
+            changed = {path.name: path.read_bytes() for path in destination.iterdir()}
+            self.assertNotEqual(changed, prior)
+
+    @unittest.skipIf(os.name == "nt", "portable POSIX descriptor regression")
+    def test_prepare_does_not_depend_on_procfs_descriptor_links(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            with patch(
+                "contrainte.component_assembly.os.readlink",
+                side_effect=OSError("procfs is unavailable"),
+            ):
+                report = prepare_component_assembly(
+                    "interface.json",
+                    "assembly-template.json",
+                    root,
+                    "publication/prepared",
+                )
+            self.assertEqual(report["status"], "prepared")
+            self.assertTrue((root / report["assembly_locator"]).is_file())
+
+    @unittest.skipIf(os.name == "nt", "POSIX transaction permissions")
+    def test_prepare_private_stage_directory_has_owner_only_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            original = component_assembly_module._BoundDirectory.write_new_file
+            observed_modes: list[int] = []
+
+            def record_stage_mode(
+                bound: object,
+                name: str,
+                captured: bytes,
+                *,
+                field: str,
+            ) -> None:
+                if field.startswith("staged prepared output"):
+                    observed_modes.append(stat.S_IMODE(os.fstat(bound.handle).st_mode))
+                original(bound, name, captured, field=field)
+
+            with patch(
+                "contrainte.component_assembly._BoundDirectory.write_new_file",
+                new=record_stage_mode,
+            ):
+                prepare_component_assembly(
+                    "interface.json",
+                    "assembly-template.json",
+                    root,
+                    "publication/prepared",
+                )
+            self.assertEqual(observed_modes, [0o700, 0o700, 0o700])
+
+    def test_prepare_rejects_semantic_equivalent_stage_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            original = component_assembly_module._BoundDirectory.write_new_file
+            names = (
+                "component-pair.interface.json",
+                "component-pair.interface-result.json",
+                "component-pair.component-assembly.json",
+            )
+            for target_name in names:
+
+                def replace_with_compact(
+                    bound: object,
+                    name: str,
+                    captured: bytes,
+                    *,
+                    field: str,
+                    replacement_target: str = target_name,
+                ) -> None:
+                    original(bound, name, captured, field=field)
+                    if name == replacement_target:
+                        path = bound.path / name
+                        path.write_text(
+                            json.dumps(
+                                loads_strict(captured),
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            encoding="utf-8",
+                            newline="\n",
+                        )
+
+                with (
+                    self.subTest(target=target_name),
+                    patch(
+                        "contrainte.component_assembly._BoundDirectory.write_new_file",
+                        new=replace_with_compact,
+                    ),
+                    self.assertRaisesRegex(IntegrityError, "digest mismatch"),
+                ):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+                self.assertFalse((root / "publication" / "prepared").exists())
+
+    def test_prepare_final_capture_rejects_semantic_equivalent_replacement(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            original_load = component_assembly_module._load_bound_context
+            names = (
+                "component-pair.interface.json",
+                "component-pair.interface-result.json",
+                "component-pair.component-assembly.json",
+            )
+            for target_name in names:
+
+                def replace_before_context(
+                    *args: object,
+                    replacement_target: str = target_name,
+                    **kwargs: object,
+                ) -> object:
+                    path = root / "publication" / "prepared" / replacement_target
+                    path.write_text(
+                        json.dumps(
+                            loads_strict(path.read_bytes()),
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        encoding="utf-8",
+                        newline="\n",
+                    )
+                    return original_load(*args, **kwargs)
+
+                with (
+                    self.subTest(target=target_name),
+                    patch(
+                        "contrainte.component_assembly._load_bound_context",
+                        side_effect=replace_before_context,
+                    ),
+                    self.assertRaises(IntegrityError),
+                ):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+                self.assertFalse((root / "publication" / "prepared").exists())
+
+    def test_prepare_retains_every_final_file_through_set_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            original_open = component_assembly_module._open_retained_bound_file
+            names = (
+                "component-pair.interface.json",
+                "component-pair.interface-result.json",
+                "component-pair.component-assembly.json",
+            )
+            for target_name in names:
+                matching_captures = 0
+
+                def replace_during_final_capture(
+                    *args: object,
+                    replacement_target: str = target_name,
+                    **kwargs: object,
+                ) -> object:
+                    nonlocal matching_captures
+                    retained = original_open(*args, **kwargs)
+                    if kwargs["field"] != f"prepared output {replacement_target}":
+                        return retained
+                    matching_captures += 1
+                    if matching_captures != 4:
+                        return retained
+                    path = retained.parent.path / retained.name
+                    compact = json.dumps(
+                        loads_strict(retained.captured),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    try:
+                        path.write_text(compact, encoding="utf-8", newline="\n")
+                    except OSError as exc:
+                        retained.close()
+                        raise IntegrityError(
+                            "final prepared file replacement was handle-blocked"
+                        ) from exc
+                    return retained
+
+                with (
+                    self.subTest(target=target_name),
+                    patch(
+                        "contrainte.component_assembly._open_retained_bound_file",
+                        side_effect=replace_during_final_capture,
+                    ),
+                    self.assertRaisesRegex(
+                        IntegrityError, "handle-blocked|changed after capture"
+                    ),
+                ):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+                self.assertEqual(matching_captures, 4)
+                self.assertFalse((root / "publication" / "prepared").exists())
+
+    def test_prepare_rejects_foreign_and_hard_linked_output_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            destination = root / "publication" / "prepared"
+            destination.mkdir(parents=True)
+            foreign = destination / "foreign.txt"
+            foreign.write_text("foreign", encoding="utf-8")
+            with self.assertRaisesRegex(InputError, "foreign"):
+                prepare_component_assembly(
+                    "interface.json",
+                    "assembly-template.json",
+                    root,
+                    "publication/prepared",
+                )
+            self.assertEqual(foreign.read_text(encoding="utf-8"), "foreign")
+
+            foreign.unlink()
+            prepare_component_assembly(
+                "interface.json",
+                "assembly-template.json",
+                root,
+                "publication/prepared",
+            )
+            target = destination / "component-pair.interface.json"
+            hardlink_source = root / "hardlink-source.json"
+            hardlink_source.write_bytes(target.read_bytes())
+            target.unlink()
+            os.link(hardlink_source, target)
+            with self.assertRaisesRegex(InputError, "hard-linked"):
+                prepare_component_assembly(
+                    "interface.json",
+                    "assembly-template.json",
+                    root,
+                    "publication/prepared",
+                )
+
+    def test_prepare_rejects_linked_output_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            prepare_component_assembly(
+                "interface.json",
+                "assembly-template.json",
+                root,
+                "publication/prepared",
+            )
+            destination = root / "publication" / "prepared"
+            target = destination / "component-pair.interface.json"
+            shadow = root / "interface-shadow.json"
+            target.replace(shadow)
+            try:
+                target.symlink_to(shadow)
+            except OSError as exc:
+                shadow.replace(target)
+                self.skipTest(f"symbolic links are unavailable: {exc}")
+            try:
+                with self.assertRaisesRegex(InputError, "links or reparse"):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+            finally:
+                target.unlink()
+                shadow.replace(target)
+
+    def test_prepare_detects_source_ancestor_identity_swap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, component_root = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            displaced = root / "components-displaced"
+            outside = root / "outside-components"
+            outside.mkdir()
+            marker = outside / "marker.bin"
+            marker.write_bytes(b"outside-must-not-be-read-or-changed")
+            swapped = False
+            attempted = False
+
+            def install_directory_link(link: Path, target: Path) -> None:
+                if os.name == "nt":
+                    completed = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if completed.returncode != 0:
+                        raise unittest.SkipTest(
+                            f"directory junctions are unavailable: {completed.stderr}"
+                        )
+                else:
+                    link.symlink_to(target, target_is_directory=True)
+
+            def attempt_swap(point: str) -> None:
+                nonlocal attempted, swapped
+                if point != "before_file_open:component manifest" or attempted:
+                    return
+                attempted = True
+                try:
+                    os.replace(component_root, displaced)
+                except OSError as exc:
+                    raise IntegrityError(
+                        "source ancestor swap blocked before file read"
+                    ) from exc
+                swapped = True
+                install_directory_link(component_root, outside)
+
+            try:
+                with (
+                    patch(
+                        "contrainte.component_assembly._prepare_fault_hook",
+                        side_effect=attempt_swap,
+                    ),
+                    self.assertRaisesRegex(
+                        IntegrityError,
+                        "swap blocked|location changed|no longer visible",
+                    ),
+                ):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+            finally:
+                if swapped:
+                    if os.name == "nt":
+                        os.rmdir(component_root)
+                    else:
+                        component_root.unlink()
+                    os.replace(displaced, component_root)
+            self.assertTrue(attempted)
+            self.assertEqual(
+                marker.read_bytes(), b"outside-must-not-be-read-or-changed"
+            )
+            self.assertEqual({item.name for item in outside.iterdir()}, {"marker.bin"})
+
+    def test_prepare_detects_output_ancestor_link_swap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, _ = self._fixture(root)
+            self._write_prepare_template(root, assembly)
+            publication = root / "publication"
+            displaced = root / "publication-displaced"
+            outside = root / "outside-publication"
+            outside.mkdir()
+            marker = outside / "marker.bin"
+            marker.write_bytes(b"outside-must-not-be-written-or-removed")
+            swapped = False
+            attempted = False
+
+            def install_directory_link(link: Path, target: Path) -> None:
+                if os.name == "nt":
+                    completed = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if completed.returncode != 0:
+                        raise unittest.SkipTest(
+                            f"directory junctions are unavailable: {completed.stderr}"
+                        )
+                else:
+                    link.symlink_to(target, target_is_directory=True)
+
+            def attempt_swap(point: str) -> None:
+                nonlocal attempted, swapped
+                if not point.startswith("before_file_create:staged prepared output"):
+                    return
+                if not attempted:
+                    attempted = True
+                    try:
+                        os.replace(publication, displaced)
+                    except OSError as exc:
+                        raise IntegrityError(
+                            "output ancestor swap blocked before file write"
+                        ) from exc
+                    swapped = True
+                    install_directory_link(publication, outside)
+
+            try:
+                with (
+                    patch(
+                        "contrainte.component_assembly._prepare_fault_hook",
+                        side_effect=attempt_swap,
+                    ),
+                    self.assertRaisesRegex(
+                        IntegrityError,
+                        "swap blocked|location changed|no longer visible",
+                    ),
+                ):
+                    prepare_component_assembly(
+                        "interface.json",
+                        "assembly-template.json",
+                        root,
+                        "publication/prepared",
+                    )
+            finally:
+                if swapped:
+                    if publication.exists() or publication.is_symlink():
+                        if os.name == "nt":
+                            os.rmdir(publication)
+                        else:
+                            publication.unlink()
+                    os.replace(displaced, publication)
+            self.assertTrue(attempted)
+            self.assertFalse((publication / "prepared").exists())
+            self.assertEqual(tuple(publication.iterdir()), ())
+            self.assertEqual(
+                marker.read_bytes(), b"outside-must-not-be-written-or-removed"
+            )
+            self.assertEqual({item.name for item in outside.iterdir()}, {"marker.bin"})
 
     def test_hostile_decimal_context_cannot_change_projection_or_replay(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
