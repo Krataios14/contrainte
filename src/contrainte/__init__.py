@@ -9,6 +9,7 @@ from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
 from .release import ComponentReleaseRequest, derive_component_manifest
 from .sketch import (
+    CircularHole,
     SketchConstraint,
     SketchExtrusion,
     SketchPoint,
@@ -25,6 +26,7 @@ __all__ = [
     "Assembly",
     "AxialCase",
     "AxialResult",
+    "CircularHole",
     "ComponentInterface",
     "ComponentManifest",
     "ComponentReleaseRequest",

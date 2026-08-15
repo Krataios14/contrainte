@@ -5,7 +5,7 @@ import re
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal, localcontext
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -19,7 +19,16 @@ from .solid import SolidLimits, SolidManufacturing
 from .units import Quantity
 
 SKETCH_EXTRUSION_SCHEMA = "contrainte.sketch-extrusion/0.1"
+SKETCH_EXTRUSION_SCHEMA_V2 = "contrainte.sketch-extrusion/0.2"
 SKETCH_BUNDLE_SCHEMA = "contrainte.sketch-bundle/0.1"
+SKETCH_BUNDLE_SCHEMA_V2 = "contrainte.sketch-bundle/0.2"
+_SKETCH_EXTRUSION_SCHEMAS = {SKETCH_EXTRUSION_SCHEMA, SKETCH_EXTRUSION_SCHEMA_V2}
+_SKETCH_BUNDLE_SCHEMAS = {SKETCH_BUNDLE_SCHEMA, SKETCH_BUNDLE_SCHEMA_V2}
+_PI_DECIMAL = (
+    "3.141592653589793238462643383279502884197169399375105820974944592307816406"
+    "2862089986280348253421170679"
+)
+_PI_DECIMAL_PLACES = 100
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _CONSTRAINT_KINDS = {"fixed", "horizontal", "vertical", "offset_x", "offset_y"}
 _AXES = ("x", "y")
@@ -201,14 +210,56 @@ class SketchConstraint:
 
 
 @dataclass(frozen=True)
+class CircularHole:
+    circle_id: str
+    center_point_id: str
+    diameter: Quantity
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> CircularHole:
+        expected = {"circle_id", "center_point_id", "diameter"}
+        if not isinstance(raw, dict) or set(raw) != expected:
+            raise InputError(
+                f"{field} must contain exactly circle_id, center_point_id, and diameter"
+            )
+        return cls(
+            _safe_id(raw, "circle_id", field),
+            _safe_id(raw, "center_point_id", field),
+            _length(raw["diameter"], f"{field}.diameter", positive=True),
+        )
+
+    @property
+    def radius_mm(self) -> Fraction:
+        return _mm_fraction(self.diameter) / 2
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "circle_id": self.circle_id,
+            "center_point_id": self.center_point_id,
+            "diameter": self.diameter.as_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class SketchProfile:
     outer_loop: tuple[str, ...]
     inner_loops: tuple[tuple[str, ...], ...]
+    circular_holes: tuple[CircularHole, ...] = ()
 
     @classmethod
-    def from_dict(cls, raw: Any, *, field: str) -> SketchProfile:
-        if not isinstance(raw, dict) or set(raw) != {"outer_loop", "inner_loops"}:
-            raise InputError(f"{field} must contain exactly outer_loop and inner_loops")
+    def from_dict(
+        cls,
+        raw: Any,
+        *,
+        field: str,
+        schema_version: str = SKETCH_EXTRUSION_SCHEMA,
+    ) -> SketchProfile:
+        expected = {"outer_loop", "inner_loops"}
+        if schema_version == SKETCH_EXTRUSION_SCHEMA_V2:
+            expected.add("circular_holes")
+        if not isinstance(raw, dict) or set(raw) != expected:
+            rendered = ", ".join(sorted(expected))
+            raise InputError(f"{field} must contain exactly {rendered}")
         outer = _loop(raw.get("outer_loop"), f"{field}.outer_loop")
         inner_raw = raw.get("inner_loops")
         if not isinstance(inner_raw, list):
@@ -220,17 +271,37 @@ class SketchProfile:
         first_ids = [loop[0] for loop in inner]
         if first_ids != sorted(first_ids):
             raise InputError(f"{field}.inner_loops must be ordered by their first point")
-        return cls(outer, inner)
+        circles_raw = raw.get("circular_holes", [])
+        if not isinstance(circles_raw, list):
+            raise InputError(f"{field}.circular_holes must be a list")
+        circles = tuple(
+            CircularHole.from_dict(item, field=f"{field}.circular_holes[{index}]")
+            for index, item in enumerate(circles_raw)
+        )
+        circle_ids = [circle.circle_id for circle in circles]
+        if len(circle_ids) != len(set(circle_ids)):
+            raise InputError(f"{field}.circular_holes identifiers must be unique")
+        if circle_ids != sorted(circle_ids):
+            raise InputError(f"{field}.circular_holes must be ordered by circle_id")
+        center_ids = [circle.center_point_id for circle in circles]
+        if len(center_ids) != len(set(center_ids)):
+            raise InputError(f"{field}.circular_holes must use distinct center points")
+        return cls(outer, inner, circles)
 
     @property
     def loops(self) -> tuple[tuple[str, ...], ...]:
         return (self.outer_loop, *self.inner_loops)
 
-    def as_dict(self) -> dict[str, Any]:
-        return {
+    def as_dict(
+        self, *, schema_version: str = SKETCH_EXTRUSION_SCHEMA
+    ) -> dict[str, Any]:
+        document: dict[str, Any] = {
             "outer_loop": list(self.outer_loop),
             "inner_loops": [list(loop) for loop in self.inner_loops],
         }
+        if schema_version == SKETCH_EXTRUSION_SCHEMA_V2:
+            document["circular_holes"] = [circle.as_dict() for circle in self.circular_holes]
+        return document
 
 
 def _loop(raw: Any, field: str) -> tuple[str, ...]:
@@ -281,7 +352,7 @@ class SketchExtrusion:
         if unknown:
             raise InputError(f"{field} contains unsupported fields: {', '.join(unknown)}")
         schema = _string(raw, "schema_version", field)
-        if schema != SKETCH_EXTRUSION_SCHEMA:
+        if schema not in _SKETCH_EXTRUSION_SCHEMAS:
             raise InputError(f"unsupported sketch-extrusion schema: {schema!r}")
         points_raw = raw.get("points")
         if not isinstance(points_raw, list) or len(points_raw) < 3:
@@ -315,13 +386,21 @@ class SketchExtrusion:
                     f"constraint {constraint.constraint_id!r} references unknown points: "
                     + ", ".join(missing)
                 )
-        profile = SketchProfile.from_dict(raw.get("profile"), field=f"{field}.profile")
+        profile = SketchProfile.from_dict(
+            raw.get("profile"), field=f"{field}.profile", schema_version=schema
+        )
         profile_points = [point for loop in profile.loops for point in loop]
         if len(profile_points) != len(set(profile_points)):
             raise InputError(f"{field}.profile loops must not share points")
-        if set(profile_points) != known:
-            missing = sorted(known - set(profile_points))
-            unknown_profile = sorted(set(profile_points) - known)
+        circle_centers = [circle.center_point_id for circle in profile.circular_holes]
+        used_points = set(profile_points) | set(circle_centers)
+        if set(profile_points) & set(circle_centers):
+            raise InputError(
+                f"{field}.profile circle centers must not also be polygon vertices"
+            )
+        if used_points != known:
+            missing = sorted(known - used_points)
+            unknown_profile = sorted(used_points - known)
             details = []
             if missing:
                 details.append("unused points: " + ", ".join(missing))
@@ -369,7 +448,7 @@ class SketchExtrusion:
             "limits": self.limits.as_dict(),
             "points": [item.as_dict() for item in self.points],
             "constraints": [item.as_dict() for item in self.constraints],
-            "profile": self.profile.as_dict(),
+            "profile": self.profile.as_dict(schema_version=self.schema_version),
             "extrusion_distance": self.extrusion_distance.as_dict(),
         }
 
@@ -533,6 +612,56 @@ def validate_profile(sketch: SketchExtrusion, points: PointMap) -> None:
                     f"profile inner_loops[{first_index}] is closer to "
                     f"inner_loops[{second_index}] than the minimum feature size"
                 )
+    outer_segments = _segments(sketch.profile.outer_loop, points)
+    for circle_index, circle in enumerate(sketch.profile.circular_holes):
+        radius = circle.radius_mm
+        if radius * 2 < minimum:
+            raise InputError(
+                f"profile.circular_holes[{circle_index}] diameter is below the minimum "
+                "feature size"
+            )
+        center = points[circle.center_point_id]
+        if _point_in_polygon(center, sketch.profile.outer_loop, points) != 1:
+            raise InputError(
+                f"profile.circular_holes[{circle_index}] center is not strictly inside "
+                "outer_loop"
+            )
+        if _point_segments_below_clearance(
+            center, outer_segments, radius + minimum
+        ):
+            raise InputError(
+                f"profile.circular_holes[{circle_index}] is closer to outer_loop than "
+                "the minimum feature size"
+            )
+        for hole_index, loop in enumerate(sketch.profile.inner_loops):
+            if _point_in_polygon(center, loop, points) != -1:
+                raise InputError(
+                    f"profile.circular_holes[{circle_index}] center lies in or on "
+                    f"inner_loops[{hole_index}]"
+                )
+            if _point_segments_below_clearance(
+                center, _segments(loop, points), radius + minimum
+            ):
+                raise InputError(
+                    f"profile.circular_holes[{circle_index}] is closer to "
+                    f"inner_loops[{hole_index}] than the minimum feature size"
+                )
+    for first_index, first in enumerate(sketch.profile.circular_holes):
+        first_center = points[first.center_point_id]
+        for second_index, second in enumerate(
+            sketch.profile.circular_holes[first_index + 1 :], start=first_index + 1
+        ):
+            second_center = points[second.center_point_id]
+            required = first.radius_mm + second.radius_mm + minimum
+            separation_squared = (
+                (second_center[0] - first_center[0]) ** 2
+                + (second_center[1] - first_center[1]) ** 2
+            )
+            if separation_squared < required * required:
+                raise InputError(
+                    f"profile.circular_holes[{first_index}] is closer to "
+                    f"circular_holes[{second_index}] than the minimum feature size"
+                )
 
 
 def _signed_double_area(loop: Sequence[str], points: PointMap) -> Fraction:
@@ -672,6 +801,18 @@ def _segments_below_separation(
     )
 
 
+def _point_segments_below_clearance(
+    point: tuple[Fraction, Fraction],
+    segments: Sequence[Segment],
+    required: Fraction,
+) -> bool:
+    required_squared = required * required
+    return any(
+        _point_segment_distance_squared(point, segment) < required_squared
+        for segment in segments
+    )
+
+
 def _point_in_polygon(
     point: tuple[Fraction, Fraction], loop: Sequence[str], points: PointMap
 ) -> int:
@@ -698,7 +839,7 @@ def load_sketch_extrusion(path: str | Path) -> SketchExtrusion:
 
 def build_sketch_shape(sketch: SketchExtrusion) -> Any:
     try:
-        from build123d import Polygon, extrude
+        from build123d import Circle, Polygon, Pos, extrude
     except ImportError as exc:
         raise ExecutionError(
             "the CAD backend is not installed; install Contrainte with the 'cad' extra"
@@ -708,6 +849,10 @@ def build_sketch_shape(sketch: SketchExtrusion) -> Any:
     profile = outer
     for loop in sketch.profile.inner_loops:
         hole = Polygon(*[(float(x), float(y)) for x, y in _loop_points(loop, solved)])
+        profile = profile - hole
+    for circle in sketch.profile.circular_holes:
+        center_x, center_y = solved[circle.center_point_id]
+        hole = Pos(float(center_x), float(center_y)) * Circle(float(circle.radius_mm))
         profile = profile - hole
     shape = extrude(profile, amount=float(sketch.extrusion_distance.to("mm").value))
     valid = shape.is_valid
@@ -724,6 +869,95 @@ def _loop_points(
     return tuple(points[point_id] for point_id in loop)
 
 
+def _v2_profile_analysis(
+    sketch: SketchExtrusion,
+    solved: PointMap,
+    outer_area: Fraction,
+    polygon_holes_area: Fraction,
+    distance: Fraction,
+) -> tuple[dict[str, Any], dict[str, str], Decimal, dict[str, Any]]:
+    polygon_net_area = outer_area - polygon_holes_area
+    circle_pi_coefficient = sum(
+        (circle.radius_mm * circle.radius_mm for circle in sketch.profile.circular_holes),
+        Fraction(0),
+    )
+    volume_rational_constant = polygon_net_area * distance
+    volume_pi_coefficient = -(circle_pi_coefficient * distance)
+    numeric_terms = (
+        polygon_net_area,
+        circle_pi_coefficient,
+        distance,
+        volume_rational_constant,
+        volume_pi_coefficient,
+    )
+    calculation_precision = max(
+        180,
+        len(_PI_DECIMAL)
+        + sum(len(_fraction_text(value).replace("-", "").replace(".", "")) for value in numeric_terms)
+        + 30,
+    )
+    with localcontext() as context:
+        context.prec = calculation_precision
+        context.rounding = ROUND_HALF_EVEN
+        pi = Decimal(_PI_DECIMAL)
+        polygon_net_decimal = Decimal(_fraction_text(polygon_net_area))
+        circle_coefficient_decimal = Decimal(_fraction_text(circle_pi_coefficient))
+        comparison_circle_area = pi * circle_coefficient_decimal
+        comparison_net_area = polygon_net_decimal - comparison_circle_area
+        comparison_volume = comparison_net_area * Decimal(_fraction_text(distance))
+        if comparison_net_area <= 0 or comparison_volume <= 0:
+            raise ExecutionError(
+                "pinned-pi analytic profile area and volume must both be positive"
+            )
+        circle_reports = [
+            {
+                "circle_id": circle.circle_id,
+                "center_point_id": circle.center_point_id,
+                "center_mm": {
+                    "x": _fraction_text(solved[circle.center_point_id][0]),
+                    "y": _fraction_text(solved[circle.center_point_id][1]),
+                },
+                "diameter_mm": _fraction_text(circle.radius_mm * 2),
+                "radius_mm": _fraction_text(circle.radius_mm),
+                "area_pi_coefficient_mm2": _fraction_text(
+                    circle.radius_mm * circle.radius_mm
+                ),
+            }
+            for circle in sketch.profile.circular_holes
+        ]
+    profile = {
+        "outer_area_mm2": _fraction_text(outer_area),
+        "polygon_inner_area_mm2": _fraction_text(polygon_holes_area),
+        "circular_inner_area_pi_coefficient_mm2": _fraction_text(
+            circle_pi_coefficient
+        ),
+        "net_area_symbolic_mm2": {
+            "form": "rational_constant + pi * pi_coefficient",
+            "rational_constant": _fraction_text(polygon_net_area),
+            "pi_coefficient": _fraction_text(-circle_pi_coefficient),
+        },
+        "comparison_net_area_mm2": decimal_text(comparison_net_area),
+        "outer_vertex_count": len(sketch.profile.outer_loop),
+        "polygon_inner_loop_count": len(sketch.profile.inner_loops),
+        "circular_hole_count": len(sketch.profile.circular_holes),
+        "circular_holes": circle_reports,
+    }
+    symbolic_volume = {
+        "form": "rational_constant + pi * pi_coefficient",
+        "rational_constant": _fraction_text(volume_rational_constant),
+        "pi_coefficient": _fraction_text(volume_pi_coefficient),
+    }
+    pi_basis = {
+        "constant": "pi",
+        "decimal_value": _PI_DECIMAL,
+        "decimal_places": _PI_DECIMAL_PLACES,
+        "arithmetic_precision_decimal_digits": calculation_precision,
+        "rounding": "ROUND_HALF_EVEN",
+        "scope": "Open CASCADE comparison only; symbolic coefficients are authority",
+    }
+    return profile, symbolic_volume, comparison_volume, pi_basis
+
+
 def analyze_sketch_extrusion(sketch: SketchExtrusion) -> tuple[dict[str, Any], Any]:
     solved, constraint_report = solve_constraints(sketch)
     validate_profile(sketch, solved)
@@ -733,11 +967,36 @@ def analyze_sketch_extrusion(sketch: SketchExtrusion) -> tuple[dict[str, Any], A
         (-_signed_double_area(loop, solved) / 2 for loop in sketch.profile.inner_loops),
         Fraction(0),
     )
-    net_area = outer_area - holes_area
     distance = _mm_fraction(sketch.extrusion_distance)
-    expected_volume = net_area * distance
     raw_volume = Decimal(str(shape.volume))
-    expected_text = _fraction_text(expected_volume)
+    if sketch.schema_version == SKETCH_EXTRUSION_SCHEMA:
+        net_area = outer_area - holes_area
+        expected_volume = net_area * distance
+        expected_text = _fraction_text(expected_volume)
+        expected_decimal = Decimal(expected_text)
+        profile_analysis = {
+            "outer_area_mm2": _fraction_text(outer_area),
+            "inner_area_mm2": _fraction_text(holes_area),
+            "net_area_mm2": _fraction_text(net_area),
+            "outer_vertex_count": len(sketch.profile.outer_loop),
+            "inner_loop_count": len(sketch.profile.inner_loops),
+        }
+        volume_analysis = {"exact_volume_mm3": expected_text}
+        pi_basis: dict[str, Any] | None = None
+    else:
+        (
+            profile_analysis,
+            symbolic_volume,
+            expected_decimal,
+            pi_basis,
+        ) = _v2_profile_analysis(
+            sketch, solved, outer_area, holes_area, distance
+        )
+        expected_text = decimal_text(expected_decimal)
+        volume_analysis = {
+            "symbolic_volume_mm3": symbolic_volume,
+            "comparison_volume_mm3": expected_text,
+        }
     density_quantity = sketch.material.properties["density"].quantity
     if density_quantity.unit != "kg/m3":
         raise ExecutionError("sketch material density must be expressed in kg/m3")
@@ -749,12 +1008,16 @@ def analyze_sketch_extrusion(sketch: SketchExtrusion) -> tuple[dict[str, Any], A
     )
     with localcontext() as context:
         context.prec = calculation_digits
-        expected_decimal = Decimal(expected_text)
         relative_error = abs(raw_volume - expected_decimal) / expected_decimal
         mass_kg = raw_volume * Decimal("0.000000001") * density
     failures: list[str] = []
     if relative_error > Decimal("0.00000001"):
-        failures.append("kernel volume does not match exact profile area times extrusion")
+        failures.append(
+            "kernel volume does not match exact profile area times extrusion"
+            if sketch.schema_version == SKETCH_EXTRUSION_SCHEMA
+            else "kernel volume does not match the symbolic circular profile evaluated "
+            "with the pinned-pi comparison basis"
+        )
     maximum_mass = _kg_fraction(sketch.limits.maximum_mass)
     if mass_kg > maximum_mass:
         failures.append(
@@ -772,18 +1035,12 @@ def analyze_sketch_extrusion(sketch: SketchExtrusion) -> tuple[dict[str, Any], A
                 f"bounding box {axis}={decimal_text(bounding_box[axis])} mm exceeds "
                 f"{_fraction_text(maximum)} mm"
             )
-    analysis = {
+    analysis: dict[str, Any] = {
         "status": "passed" if not failures else "failed",
         "constraint_solution": constraint_report,
-        "profile": {
-            "outer_area_mm2": _fraction_text(outer_area),
-            "inner_area_mm2": _fraction_text(holes_area),
-            "net_area_mm2": _fraction_text(net_area),
-            "outer_vertex_count": len(sketch.profile.outer_loop),
-            "inner_loop_count": len(sketch.profile.inner_loops),
-        },
+        "profile": profile_analysis,
         "extrusion_distance_mm": _fraction_text(distance),
-        "exact_volume_mm3": _fraction_text(expected_volume),
+        **volume_analysis,
         "kernel_volume_mm3": decimal_text(kernel_measurement(raw_volume)),
         "relative_volume_error": decimal_text(kernel_measurement(relative_error)),
         "mass_kg": decimal_text(kernel_measurement(mass_kg)),
@@ -793,6 +1050,8 @@ def analyze_sketch_extrusion(sketch: SketchExtrusion) -> tuple[dict[str, Any], A
         },
         "failures": failures,
     }
+    if pi_basis is not None:
+        analysis["pi_comparison_basis"] = pi_basis
     return analysis, shape
 
 
@@ -827,7 +1086,11 @@ def compile_sketch_extrusion(
         artifact_descriptor(svg_path, "image/svg+xml", "drawing"),
     ]
     content = {
-        "schema_version": SKETCH_BUNDLE_SCHEMA,
+        "schema_version": (
+            SKETCH_BUNDLE_SCHEMA
+            if sketch.schema_version == SKETCH_EXTRUSION_SCHEMA
+            else SKETCH_BUNDLE_SCHEMA_V2
+        ),
         "qualification": "unqualified_demonstration",
         "sketch_digest": sketch.sketch_digest,
         "material_digest": sketch.material.material_digest,
@@ -838,7 +1101,7 @@ def compile_sketch_extrusion(
             "build123d_version": package_version("build123d"),
             "opencascade_distribution_version": package_version("cadquery-ocp"),
         },
-        "checks": _sketch_checks(),
+        "checks": _sketch_checks(sketch),
         "artifacts": artifacts,
     }
     bundle = {"digest": digest(content), "content": content}
@@ -871,7 +1134,7 @@ def verify_sketch_bundle(bundle_path: str | Path) -> dict[str, str]:
     }
     if set(content) != required:
         raise IntegrityError("sketch bundle content has unsupported or missing fields")
-    if content.get("schema_version") != SKETCH_BUNDLE_SCHEMA:
+    if content.get("schema_version") not in _SKETCH_BUNDLE_SCHEMAS:
         raise IntegrityError("unsupported sketch bundle schema")
     if content.get("qualification") != "unqualified_demonstration":
         raise IntegrityError("sketch bundle qualification is unsupported")
@@ -883,6 +1146,13 @@ def verify_sketch_bundle(bundle_path: str | Path) -> dict[str, str]:
         raise IntegrityError("embedded sketch does not match its declared digest")
     if sketch.material.material_digest != content.get("material_digest"):
         raise IntegrityError("embedded sketch material does not match its declared digest")
+    expected_bundle_schema = (
+        SKETCH_BUNDLE_SCHEMA
+        if sketch.schema_version == SKETCH_EXTRUSION_SCHEMA
+        else SKETCH_BUNDLE_SCHEMA_V2
+    )
+    if content.get("schema_version") != expected_bundle_schema:
+        raise IntegrityError("sketch and bundle schema versions do not correspond")
     analysis, _ = analyze_sketch_extrusion(sketch)
     if analysis != content.get("analysis") or analysis["status"] != "passed":
         raise IntegrityError("sketch analysis does not reproduce as passed")
@@ -893,7 +1163,7 @@ def verify_sketch_bundle(bundle_path: str | Path) -> dict[str, str]:
     }
     if content.get("kernel") != expected_kernel:
         raise IntegrityError("sketch kernel identity does not match the reproducing runtime")
-    if content.get("checks") != _sketch_checks():
+    if content.get("checks") != _sketch_checks(sketch):
         raise IntegrityError("sketch checks are false, incomplete, or unsupported")
     verify_artifacts(
         path.parent,
@@ -935,6 +1205,17 @@ def _profile_svg(sketch: SketchExtrusion) -> str:
         )
         commands.append("Z")
         paths.append(" ".join(commands))
+    for circle in sketch.profile.circular_holes:
+        center_x, center_y = solved[circle.center_point_id]
+        radius = circle.radius_mm
+        svg_y = -center_y
+        paths.append(
+            f"M {_fraction_text(center_x - radius)} {_fraction_text(svg_y)} "
+            f"A {_fraction_text(radius)} {_fraction_text(radius)} 0 1 0 "
+            f"{_fraction_text(center_x + radius)} {_fraction_text(svg_y)} "
+            f"A {_fraction_text(radius)} {_fraction_text(radius)} 0 1 0 "
+            f"{_fraction_text(center_x - radius)} {_fraction_text(svg_y)} Z"
+        )
     title = html.escape(sketch.title)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -947,15 +1228,32 @@ def _profile_svg(sketch: SketchExtrusion) -> str:
     )
 
 
-def _sketch_checks() -> list[dict[str, str]]:
-    return [
+def _sketch_checks(sketch: SketchExtrusion) -> list[dict[str, str]]:
+    checks = [
         {"id": "SKETCH-SCHEMA", "status": "passed"},
         {"id": "SKETCH-EXACT-LINEAR-CONSTRAINTS", "status": "passed"},
         {"id": "SKETCH-FULLY-CONSTRAINED", "status": "passed"},
         {"id": "SKETCH-SIMPLE-PROFILE-TOPOLOGY", "status": "passed"},
         {"id": "SKETCH-MINIMUM-FEATURE", "status": "passed"},
         {"id": "SKETCH-BREP-VALIDITY", "status": "passed"},
-        {"id": "SKETCH-EXACT-VOLUME-CROSSCHECK", "status": "passed"},
-        {"id": "SKETCH-MASS-LIMIT", "status": "passed"},
-        {"id": "SKETCH-ENVELOPE-LIMIT", "status": "passed"},
     ]
+    if sketch.schema_version == SKETCH_EXTRUSION_SCHEMA:
+        checks.append({"id": "SKETCH-EXACT-VOLUME-CROSSCHECK", "status": "passed"})
+    else:
+        checks.extend(
+            [
+                {"id": "SKETCH-EXACT-CIRCULAR-DIMENSIONS", "status": "passed"},
+                {"id": "SKETCH-CIRCULAR-CLEARANCE", "status": "passed"},
+                {
+                    "id": "SKETCH-SYMBOLIC-AREA-PINNED-PI-VOLUME-CROSSCHECK",
+                    "status": "passed",
+                },
+            ]
+        )
+    checks.extend(
+        [
+            {"id": "SKETCH-MASS-LIMIT", "status": "passed"},
+            {"id": "SKETCH-ENVELOPE-LIMIT", "status": "passed"},
+        ]
+    )
+    return checks
