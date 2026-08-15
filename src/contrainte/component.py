@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import Enum
+from fractions import Fraction
 from typing import Any
 
 from .canonical import decimal_text, digest
@@ -12,8 +13,18 @@ from .errors import InputError
 
 COMPONENT_SCHEMA_V1 = "contrainte.component-manifest/0.1"
 COMPONENT_SCHEMA = "contrainte.component-manifest/0.2"
-_SUPPORTED_COMPONENT_SCHEMAS = {COMPONENT_SCHEMA_V1, COMPONENT_SCHEMA}
+COMPONENT_SCHEMA_V3 = "contrainte.component-manifest/0.3"
+_SUPPORTED_COMPONENT_SCHEMAS = {
+    COMPONENT_SCHEMA_V1,
+    COMPONENT_SCHEMA,
+    COMPONENT_SCHEMA_V3,
+}
 _DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+_CANONICAL_DECIMAL_PATTERN = re.compile(
+    r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*[1-9])?$"
+)
+_RATIONAL_PATTERN = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:/[1-9][0-9]*)?$")
+_MAX_EXACT_SCALAR_CHARACTERS = 128
 
 
 class LifecycleState(str, Enum):
@@ -94,6 +105,217 @@ def _finite_decimal(value: Any, field: str) -> Decimal:
     return parsed
 
 
+def _canonical_decimal(value: Any, field: str) -> Decimal:
+    if (
+        not isinstance(value, str)
+        or len(value) > _MAX_EXACT_SCALAR_CHARACTERS
+        or not _CANONICAL_DECIMAL_PATTERN.fullmatch(value)
+    ):
+        raise InputError(f"{field} must be a canonical decimal string")
+    parsed = _finite_decimal(value, field)
+    if decimal_text(parsed) != value:
+        raise InputError(f"{field} must be a canonical decimal string")
+    return parsed
+
+
+def _exact_rational(value: Any, field: str) -> Fraction:
+    if (
+        not isinstance(value, str)
+        or len(value) > _MAX_EXACT_SCALAR_CHARACTERS
+        or not _RATIONAL_PATTERN.fullmatch(value)
+    ):
+        raise InputError(
+            f"{field} must be a canonical integer or reduced rational string"
+        )
+    numerator_text, separator, denominator_text = value.partition("/")
+    numerator = int(numerator_text)
+    denominator = int(denominator_text) if separator else 1
+    parsed = Fraction(numerator, denominator)
+    if _rational_text(parsed) != value:
+        raise InputError(f"{field} must be reduced and canonical")
+    return parsed
+
+
+def _rational_text(value: Fraction) -> str:
+    if value.denominator == 1:
+        return str(value.numerator)
+    return f"{value.numerator}/{value.denominator}"
+
+
+def _vector(
+    raw: Any, field: str
+) -> tuple[Fraction, Fraction, Fraction]:
+    if not isinstance(raw, dict) or set(raw) != {"x", "y", "z"}:
+        raise InputError(f"{field} must contain exactly x, y, and z")
+    return tuple(
+        _exact_rational(raw[axis], f"{field}.{axis}") for axis in ("x", "y", "z")
+    )  # type: ignore[return-value]
+
+
+def _dot(
+    left: tuple[Fraction, Fraction, Fraction],
+    right: tuple[Fraction, Fraction, Fraction],
+) -> Fraction:
+    return sum((a * b for a, b in zip(left, right, strict=True)), Fraction(0))
+
+
+def _determinant(
+    x_axis: tuple[Fraction, Fraction, Fraction],
+    y_axis: tuple[Fraction, Fraction, Fraction],
+    z_axis: tuple[Fraction, Fraction, Fraction],
+) -> Fraction:
+    return (
+        x_axis[0] * (y_axis[1] * z_axis[2] - y_axis[2] * z_axis[1])
+        - x_axis[1] * (y_axis[0] * z_axis[2] - y_axis[2] * z_axis[0])
+        + x_axis[2] * (y_axis[0] * z_axis[1] - y_axis[1] * z_axis[0])
+    )
+
+
+@dataclass(frozen=True)
+class ExactInterfaceFrame:
+    """An exact engineering-bundle-local origin and rational orthonormal basis."""
+
+    reference: str
+    unit: str
+    origin: Mapping[str, Decimal]
+    x_axis: tuple[Fraction, Fraction, Fraction]
+    y_axis: tuple[Fraction, Fraction, Fraction]
+    z_axis: tuple[Fraction, Fraction, Fraction]
+
+    def __post_init__(self) -> None:
+        if self.reference != "engineering_bundle":
+            raise InputError("interface_frame.reference must be 'engineering_bundle'")
+        if self.unit != "mm":
+            raise InputError("interface_frame.unit must be 'mm'")
+        if not isinstance(self.origin, Mapping) or set(self.origin) != {
+            "x",
+            "y",
+            "z",
+        } or not all(
+            isinstance(self.origin[axis], Decimal)
+            and self.origin[axis].is_finite()
+            and len(decimal_text(self.origin[axis])) <= _MAX_EXACT_SCALAR_CHARACTERS
+            for axis in ("x", "y", "z")
+        ):
+            raise InputError(
+                "interface_frame.origin must contain finite Decimal x, y, and z values"
+            )
+        axes = (self.x_axis, self.y_axis, self.z_axis)
+        if any(
+            not isinstance(vector, tuple)
+            or len(vector) != 3
+            or not all(isinstance(value, Fraction) for value in vector)
+            for vector in axes
+        ):
+            raise InputError(
+                "interface_frame basis axes must contain three exact Fraction values"
+            )
+        if any(
+            len(_rational_text(value)) > _MAX_EXACT_SCALAR_CHARACTERS
+            for vector in axes
+            for value in vector
+        ):
+            raise InputError(
+                "interface_frame basis values exceed the exact scalar size limit"
+            )
+        if any(_dot(vector, vector) != 1 for vector in axes):
+            raise InputError("interface_frame basis axes must be exact unit vectors")
+        if any(
+            _dot(left, right) != 0
+            for left, right in (
+                (self.x_axis, self.y_axis),
+                (self.x_axis, self.z_axis),
+                (self.y_axis, self.z_axis),
+            )
+        ):
+            raise InputError("interface_frame basis axes must be exactly orthogonal")
+        if _determinant(self.x_axis, self.y_axis, self.z_axis) != 1:
+            raise InputError("interface_frame basis must be exactly right-handed")
+
+    @classmethod
+    def from_dict(cls, raw: Any, *, field: str) -> ExactInterfaceFrame:
+        if not isinstance(raw, dict):
+            raise InputError(f"{field} must be an object")
+        _reject_unknown_keys(raw, {"reference", "unit", "origin", "basis"}, field)
+        reference = _required_string(raw, "reference", field)
+        if reference != "engineering_bundle":
+            raise InputError(f"{field}.reference must be 'engineering_bundle'")
+        unit = _required_string(raw, "unit", field)
+        if unit != "mm":
+            raise InputError(f"{field}.unit must be 'mm'")
+        origin_raw = raw.get("origin")
+        if not isinstance(origin_raw, dict) or set(origin_raw) != {"x", "y", "z"}:
+            raise InputError(f"{field}.origin must contain exactly x, y, and z")
+        origin = {
+            axis: _canonical_decimal(origin_raw[axis], f"{field}.origin.{axis}")
+            for axis in ("x", "y", "z")
+        }
+        basis_raw = raw.get("basis")
+        if not isinstance(basis_raw, dict) or set(basis_raw) != {
+            "x_axis",
+            "y_axis",
+            "z_axis",
+        }:
+            raise InputError(
+                f"{field}.basis must contain exactly x_axis, y_axis, and z_axis"
+            )
+        axes = {
+            name: _vector(basis_raw[name], f"{field}.basis.{name}")
+            for name in ("x_axis", "y_axis", "z_axis")
+        }
+        for name, vector in axes.items():
+            if _dot(vector, vector) != 1:
+                raise InputError(f"{field}.basis.{name} must be an exact unit vector")
+        for left, right in (
+            ("x_axis", "y_axis"),
+            ("x_axis", "z_axis"),
+            ("y_axis", "z_axis"),
+        ):
+            if _dot(axes[left], axes[right]) != 0:
+                raise InputError(
+                    f"{field}.basis.{left} and {right} must be exactly orthogonal"
+                )
+        if _determinant(axes["x_axis"], axes["y_axis"], axes["z_axis"]) != 1:
+            raise InputError(f"{field}.basis must be exactly right-handed")
+        return cls(
+            reference,
+            unit,
+            origin,
+            axes["x_axis"],
+            axes["y_axis"],
+            axes["z_axis"],
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "reference": self.reference,
+            "unit": self.unit,
+            "origin": {
+                axis: decimal_text(self.origin[axis]) for axis in ("x", "y", "z")
+            },
+            "basis": {
+                name: {
+                    axis: _rational_text(value)
+                    for axis, value in zip(("x", "y", "z"), vector, strict=True)
+                }
+                for name, vector in (
+                    ("x_axis", self.x_axis),
+                    ("y_axis", self.y_axis),
+                    ("z_axis", self.z_axis),
+                )
+            },
+        }
+
+    def require_origin_within(
+        self, bounds: ExactGeometryBounds, *, field: str
+    ) -> None:
+        for axis in ("x", "y", "z"):
+            if not bounds.minimum[axis] <= self.origin[axis] <= bounds.maximum[axis]:
+                raise InputError(
+                    f"{field}.origin.{axis} must lie within or on geometry_bounds"
+                )
+
+
 @dataclass(frozen=True)
 class ExactGeometryBounds:
     """Axis-aligned bounds reproduced from the exact engineering geometry."""
@@ -104,7 +326,9 @@ class ExactGeometryBounds:
     maximum: Mapping[str, Decimal]
 
     @classmethod
-    def from_dict(cls, raw: Any, *, field: str) -> ExactGeometryBounds:
+    def from_dict(
+        cls, raw: Any, *, field: str, canonical: bool = False
+    ) -> ExactGeometryBounds:
         if not isinstance(raw, dict):
             raise InputError(f"{field} must be an object")
         _reject_unknown_keys(raw, {"frame", "unit", "minimum", "maximum"}, field)
@@ -120,7 +344,11 @@ class ExactGeometryBounds:
             if not isinstance(values, dict) or set(values) != {"x", "y", "z"}:
                 raise InputError(f"{field}.{bound} must contain exactly x, y, and z")
             axes[bound] = {
-                axis: _finite_decimal(values[axis], f"{field}.{bound}.{axis}")
+                axis: (
+                    _canonical_decimal(values[axis], f"{field}.{bound}.{axis}")
+                    if canonical
+                    else _finite_decimal(values[axis], f"{field}.{bound}.{axis}")
+                )
                 for axis in ("x", "y", "z")
             }
         for axis in ("x", "y", "z"):
@@ -199,16 +427,28 @@ class ComponentInterface:
     direction: InterfaceDirection
     medium: str
     properties: Mapping[str, str]
+    frame: ExactInterfaceFrame | None = None
 
     @classmethod
-    def from_dict(cls, raw: Any, *, field: str) -> ComponentInterface:
+    def from_dict(
+        cls,
+        raw: Any,
+        *,
+        field: str,
+        frame_required: bool | None = None,
+    ) -> ComponentInterface:
         if not isinstance(raw, dict):
             raise InputError(f"{field} must be an object")
+        allowed = {"interface_id", "kind", "direction", "medium", "properties"}
+        if frame_required is not False:
+            allowed.add("frame")
         _reject_unknown_keys(
             raw,
-            {"interface_id", "kind", "direction", "medium", "properties"},
+            allowed,
             field,
         )
+        if frame_required is True and "frame" not in raw:
+            raise InputError(f"{field}.frame is required")
         try:
             kind = InterfaceKind(_required_string(raw, "kind", field))
         except ValueError as exc:
@@ -227,16 +467,24 @@ class ComponentInterface:
             direction=direction,
             medium=_required_string(raw, "medium", field),
             properties=_string_map(raw.get("properties", {}), f"{field}.properties"),
+            frame=(
+                ExactInterfaceFrame.from_dict(raw["frame"], field=f"{field}.frame")
+                if "frame" in raw
+                else None
+            ),
         )
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        document = {
             "interface_id": self.interface_id,
             "kind": self.kind.value,
             "direction": self.direction.value,
             "medium": self.medium,
             "properties": dict(self.properties),
         }
+        if self.frame is not None:
+            document["frame"] = self.frame.as_dict()
+        return document
 
 
 @dataclass(frozen=True)
@@ -287,6 +535,10 @@ class ComponentManifest:
             raise InputError(
                 f"{field}.geometry_bounds is required by component schema {COMPONENT_SCHEMA!r}"
             )
+        if schema_version == COMPONENT_SCHEMA_V3 and "geometry_bounds" not in raw:
+            raise InputError(
+                f"{field}.geometry_bounds is required by component schema {COMPONENT_SCHEMA_V3!r}"
+            )
         try:
             lifecycle_state = LifecycleState(
                 _required_string(raw, "lifecycle_state", field)
@@ -328,16 +580,39 @@ class ComponentManifest:
                 f"{field}.source_bundle_digest must identify exactly one engineering_bundle artifact"
             )
 
+        geometry_bounds = (
+            ExactGeometryBounds.from_dict(
+                raw["geometry_bounds"],
+                field=f"{field}.geometry_bounds",
+                canonical=schema_version == COMPONENT_SCHEMA_V3,
+            )
+            if "geometry_bounds" in raw
+            else None
+        )
+
         interfaces_raw = raw.get("interfaces", [])
         if not isinstance(interfaces_raw, list):
             raise InputError(f"{field}.interfaces must be a list")
         interfaces = tuple(
-            ComponentInterface.from_dict(item, field=f"{field}.interfaces[{index}]")
+            ComponentInterface.from_dict(
+                item,
+                field=f"{field}.interfaces[{index}]",
+                frame_required=schema_version == COMPONENT_SCHEMA_V3,
+            )
             for index, item in enumerate(interfaces_raw)
         )
         interface_ids = [item.interface_id for item in interfaces]
         if len(interface_ids) != len(set(interface_ids)):
             raise InputError(f"{field}.interface identifiers must be unique")
+        if schema_version == COMPONENT_SCHEMA_V3:
+            if geometry_bounds is None:  # pragma: no cover - schema guard above
+                raise InputError(f"{field}.geometry_bounds is required")
+            for index, interface in enumerate(interfaces):
+                if interface.frame is None:  # pragma: no cover - parser guard above
+                    raise InputError(f"{field}.interfaces[{index}].frame is required")
+                interface.frame.require_origin_within(
+                    geometry_bounds, field=f"{field}.interfaces[{index}].frame"
+                )
 
         capabilities_raw = raw.get("capabilities", [])
         if not isinstance(capabilities_raw, list) or not all(
@@ -360,13 +635,7 @@ class ComponentManifest:
             artifacts=artifacts,
             interfaces=interfaces,
             capabilities=tuple(capabilities_raw),
-            geometry_bounds=(
-                ExactGeometryBounds.from_dict(
-                    raw["geometry_bounds"], field=f"{field}.geometry_bounds"
-                )
-                if "geometry_bounds" in raw
-                else None
-            ),
+            geometry_bounds=geometry_bounds,
             metadata=_string_map(raw.get("metadata", {}), f"{field}.metadata"),
         )
 

@@ -3,7 +3,12 @@
 from .assembly import Assembly, PartOccurrence, RigidTransform
 from .axial import AxialCase, AxialResult, solve_axial_case
 from .cad import PrismaticPart, ThroughHole, compile_part, verify_cad_bundle
-from .component import ArtifactRef, ComponentInterface, ComponentManifest
+from .component import (
+    ArtifactRef,
+    ComponentInterface,
+    ComponentManifest,
+    ExactInterfaceFrame,
+)
 from .materials import MaterialRecord
 from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
@@ -33,6 +38,7 @@ __all__ = [
     "DesignProgram",
     "DesignTask",
     "DesignWorkspace",
+    "ExactInterfaceFrame",
     "GoalContract",
     "MaterialRecord",
     "ObjectRef",
