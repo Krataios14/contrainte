@@ -22,7 +22,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
 - Exact rigid assemblies with exhaustive pairwise interference and minimum-clearance checks, reproducible STEP/STL exports, and independently reproducible analysis.
 - General exact-solid feature DAGs with boxes, cylinders, spheres, rigid transforms, boolean construction, graph validation, feature-size rules, and mass/envelope limits.
-- Fully constrained straight-line sketches solved with exact rational arithmetic, strict polygon and hole topology, and evidence-backed Open CASCADE extrusion.
+- Fully constrained sketches solved with exact rational arithmetic, strict polygon topology, exact-diameter circular through-holes, symbolic circular-area evidence, and evidence-backed Open CASCADE extrusion.
 - Strict design-program DAGs with declared work products, execution authority, acceptance criteria, and human gates.
 - Content-addressed resumable workspaces that detect state or object tampering.
 - Isolated subscription-CLI adapters for Codex, Claude, or two independent candidates.
@@ -71,6 +71,15 @@ python -m contrainte sketch compile examples/constrained-pocket-plate.json --out
 python -m contrainte sketch verify artifacts/constrained-pocket-plate/plate.sketch.demo.sketch-bundle.json
 ```
 
+Version 0.2 adds analytically exact circular through-hole dimensions and rational
+clearance decisions while retaining symbolic pi coefficients as the area and volume
+authority:
+
+```powershell
+python -m contrainte sketch compile examples/circular-through-hole-plate.json --output-dir artifacts/circular-through-hole-plate
+python -m contrainte sketch verify artifacts/circular-through-hole-plate/plate.circular.demo.sketch-bundle.json
+```
+
 Verified sketch bundles use the same component-release boundary as prismatic, solid-program, and assembly bundles. Derivation preserves the exact geometry, drawing, mesh, source-bundle identity, and explicit unqualified status rather than treating the sketch as an informal precursor.
 
 Derive an explicitly unqualified component manifest that pins the exact bundle and every local artifact, then verify the complete chain:
@@ -92,7 +101,7 @@ Both examples use synthetic data and are explicitly unsuitable for engineering r
 
 ## Near-term development sequence
 
-The current CAD slice proves the authority chain on rectangular milled parts, straight-line constrained sketch extrusions, strict exact-solid boolean programs, and exact rigid assemblies. It is not yet a full mechanical feature modeller. The next geometry gates are richer sketch geometry and constraints, persistent semantic topology, tolerance analysis, drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
+The current CAD slice proves the authority chain on rectangular milled parts, polygonal constrained sketch extrusions with circular through-holes, strict exact-solid boolean programs, and exact rigid assemblies. It is not yet a full mechanical feature modeller. The next geometry gates are richer constraints and feature operations, persistent semantic topology, tolerance analysis, controlled drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
 
 The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
 The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
