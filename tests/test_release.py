@@ -75,6 +75,19 @@ class ComponentReleaseTests(unittest.TestCase):
                 manifest.qualification, Qualification.UNQUALIFIED_DEMONSTRATION
             )
             self.assertEqual(
+                manifest.schema_version, "contrainte.component-manifest/0.2"
+            )
+            self.assertIsNotNone(manifest.geometry_bounds)
+            self.assertEqual(
+                manifest.geometry_bounds.as_dict(),  # type: ignore[union-attr]
+                {
+                    "frame": "engineering_bundle",
+                    "unit": "mm",
+                    "minimum": {"x": "-50", "y": "-30", "z": "0"},
+                    "maximum": {"x": "50", "y": "30", "z": "50"},
+                },
+            )
+            self.assertEqual(
                 roles,
                 {
                     ArtifactRole.ENGINEERING_BUNDLE,
@@ -120,6 +133,14 @@ class ComponentReleaseTests(unittest.TestCase):
                 dumps_pretty(incomplete), encoding="utf-8", newline="\n"
             )
             with self.assertRaisesRegex(IntegrityError, "exactly match"):
+                verify_local_component_manifest(manifest_path)
+
+            false_bounds = copy.deepcopy(original)
+            false_bounds["geometry_bounds"]["maximum"]["x"] = "51"
+            manifest_path.write_text(
+                dumps_pretty(false_bounds), encoding="utf-8", newline="\n"
+            )
+            with self.assertRaisesRegex(IntegrityError, "bounds do not reproduce"):
                 verify_local_component_manifest(manifest_path)
 
             traversal = copy.deepcopy(original)

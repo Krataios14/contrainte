@@ -6,20 +6,32 @@ from pathlib import Path
 from typing import Any
 
 from .artifacts import file_digest
-from .assembly import ASSEMBLY_BUNDLE_SCHEMA, verify_assembly_bundle
-from .cad import CAD_BUNDLE_SCHEMA, verify_cad_bundle
-from .canonical import dumps_pretty, loads_strict
+from .assembly import (
+    ASSEMBLY_BUNDLE_SCHEMA,
+    Assembly,
+    analyze_assembly,
+    verify_assembly_bundle,
+)
+from .cad import CAD_BUNDLE_SCHEMA, PrismaticPart, build_part_shape, verify_cad_bundle
+from .canonical import decimal_text, dumps_pretty, loads_strict
 from .component import (
     COMPONENT_SCHEMA,
     ArtifactRef,
     ArtifactRole,
     ComponentInterface,
     ComponentManifest,
+    ExactGeometryBounds,
     LifecycleState,
     Qualification,
 )
 from .errors import InputError, IntegrityError
-from .solid import SOLID_BUNDLE_SCHEMA, verify_solid_bundle
+from .geometry import kernel_measurement
+from .solid import (
+    SOLID_BUNDLE_SCHEMA,
+    SolidProgram,
+    analyze_solid_program,
+    verify_solid_bundle,
+)
 
 RELEASE_REQUEST_SCHEMA = "contrainte.component-release-request/0.1"
 _RESERVED_METADATA = {
@@ -144,6 +156,7 @@ def derive_component_manifest(
 ) -> ComponentManifest:
     source = Path(bundle_path).resolve()
     document, schema, artifacts = _verified_bundle_artifacts(source)
+    geometry_bounds = _exact_geometry_bounds(document, schema)
     metadata = dict(request.metadata)
     metadata.update(
         {
@@ -164,6 +177,7 @@ def derive_component_manifest(
             "artifacts": [item.as_dict() for item in artifacts],
             "interfaces": [item.as_dict() for item in request.interfaces],
             "capabilities": list(request.capabilities),
+            "geometry_bounds": geometry_bounds.as_dict(),
             "metadata": metadata,
         }
     )
@@ -214,6 +228,11 @@ def verify_local_component_manifest(manifest_path: str | Path) -> dict[str, str]
     if manifest.artifacts != expected_artifacts:
         raise IntegrityError(
             "component artifacts do not exactly match the verified engineering bundle"
+        )
+    expected_bounds = _exact_geometry_bounds(document, schema)
+    if manifest.geometry_bounds != expected_bounds:
+        raise IntegrityError(
+            "component geometry bounds do not reproduce from the engineering bundle"
         )
     for artifact in manifest.artifacts:
         locator = _safe_locator(artifact.locator)
@@ -291,6 +310,36 @@ def _verified_bundle_artifacts(
             )
         )
     return document, str(schema), tuple(artifacts)
+
+
+def _exact_geometry_bounds(
+    document: Mapping[str, Any], schema: str
+) -> ExactGeometryBounds:
+    content = document["content"]
+    if schema == CAD_BUNDLE_SCHEMA:
+        shape = build_part_shape(PrismaticPart.from_dict(content["part"]))
+    elif schema == SOLID_BUNDLE_SCHEMA:
+        _, shape = analyze_solid_program(SolidProgram.from_dict(content["program"]))
+    elif schema == ASSEMBLY_BUNDLE_SCHEMA:
+        _, shape = analyze_assembly(Assembly.from_dict(content["assembly"]))
+    else:  # pragma: no cover - guarded by _verified_bundle_artifacts
+        raise InputError(f"unsupported component engineering bundle schema: {schema!r}")
+    bounds = shape.bounding_box()
+    return ExactGeometryBounds.from_dict(
+        {
+            "frame": "engineering_bundle",
+            "unit": "mm",
+            "minimum": {
+                axis: decimal_text(kernel_measurement(getattr(bounds.min, axis.upper())))
+                for axis in ("x", "y", "z")
+            },
+            "maximum": {
+                axis: decimal_text(kernel_measurement(getattr(bounds.max, axis.upper())))
+                for axis in ("x", "y", "z")
+            },
+        },
+        field="derived_geometry_bounds",
+    )
 
 
 def _safe_locator(value: Any) -> str:
