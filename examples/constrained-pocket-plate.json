@@ -1,0 +1,148 @@
+{
+  "schema_version": "contrainte.sketch-extrusion/0.1",
+  "part_id": "plate.sketch.demo",
+  "revision": "A",
+  "title": "Fully constrained demonstration pocket plate",
+  "material": {
+    "applicability": {"condition": "room-temperature demonstration only"},
+    "designation": "316L demonstration record",
+    "evidence": [
+      {
+        "authority": "Contrainte synthetic fixture",
+        "content": "Synthetic demonstration material record; not for engineering release.",
+        "content_digest": "sha256:d8509eb6540afc9d5ecf2d751c875535523f9b720207da5b230a3d0a9aff66c6",
+        "evidence_id": "EVD-MAT-SYNTHETIC",
+        "kind": "synthetic",
+        "locator": "examples/mounting-plate.json",
+        "retrieved_at": "2026-08-15T00:00:00+02:00",
+        "revision": "1",
+        "title": "Synthetic 316L-like properties"
+      }
+    ],
+    "material_id": "material.synthetic.316l",
+    "properties": {
+      "density": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-DENSITY",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "density",
+        "quantity": {"kind": "density", "unit": "kg/m3", "value": "8000"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "elastic_modulus": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-ELASTIC",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "elastic_modulus",
+        "quantity": {"kind": "pressure", "unit": "GPa", "value": "193"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "poisson_ratio": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-POISSON",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "poisson_ratio",
+        "quantity": {"kind": "dimensionless", "unit": "1", "value": "0.29"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "yield_strength": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-YIELD",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "yield_strength",
+        "quantity": {"kind": "pressure", "unit": "MPa", "value": "215"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      }
+    },
+    "revision": "1",
+    "schema_version": "contrainte.material-record/0.1",
+    "standard": "synthetic; no standard claim"
+  },
+  "manufacturing": {
+    "process": "3-axis milling",
+    "minimum_feature_size": {"kind": "length", "unit": "mm", "value": "2"}
+  },
+  "limits": {
+    "maximum_mass": {"kind": "mass", "unit": "kg", "value": "1"},
+    "maximum_bounding_box": {
+      "x": {"kind": "length", "unit": "mm", "value": "110"},
+      "y": {"kind": "length", "unit": "mm", "value": "70"},
+      "z": {"kind": "length", "unit": "mm", "value": "20"}
+    }
+  },
+  "points": [
+    {"point_id": "h0"},
+    {"point_id": "h1"},
+    {"point_id": "h2"},
+    {"point_id": "h3"},
+    {"point_id": "p0"},
+    {"point_id": "p1"},
+    {"point_id": "p2"},
+    {"point_id": "p3"}
+  ],
+  "constraints": [
+    {
+      "constraint_id": "c01",
+      "kind": "fixed",
+      "point_id": "h0",
+      "x": {"kind": "length", "unit": "mm", "value": "20"},
+      "y": {"kind": "length", "unit": "mm", "value": "20"}
+    },
+    {"constraint_id": "c02", "kind": "horizontal", "first_point_id": "h0", "second_point_id": "h1"},
+    {
+      "constraint_id": "c03",
+      "kind": "offset_x",
+      "first_point_id": "h0",
+      "second_point_id": "h1",
+      "distance": {"kind": "length", "unit": "mm", "value": "60"}
+    },
+    {"constraint_id": "c04", "kind": "vertical", "first_point_id": "h1", "second_point_id": "h2"},
+    {
+      "constraint_id": "c05",
+      "kind": "offset_y",
+      "first_point_id": "h1",
+      "second_point_id": "h2",
+      "distance": {"kind": "length", "unit": "mm", "value": "20"}
+    },
+    {"constraint_id": "c06", "kind": "horizontal", "first_point_id": "h2", "second_point_id": "h3"},
+    {"constraint_id": "c07", "kind": "vertical", "first_point_id": "h3", "second_point_id": "h0"},
+    {
+      "constraint_id": "c08",
+      "kind": "fixed",
+      "point_id": "p0",
+      "x": {"kind": "length", "unit": "mm", "value": "0"},
+      "y": {"kind": "length", "unit": "mm", "value": "0"}
+    },
+    {"constraint_id": "c09", "kind": "horizontal", "first_point_id": "p0", "second_point_id": "p1"},
+    {
+      "constraint_id": "c10",
+      "kind": "offset_x",
+      "first_point_id": "p0",
+      "second_point_id": "p1",
+      "distance": {"kind": "length", "unit": "mm", "value": "100"}
+    },
+    {"constraint_id": "c11", "kind": "vertical", "first_point_id": "p1", "second_point_id": "p2"},
+    {
+      "constraint_id": "c12",
+      "kind": "offset_y",
+      "first_point_id": "p1",
+      "second_point_id": "p2",
+      "distance": {"kind": "length", "unit": "mm", "value": "60"}
+    },
+    {"constraint_id": "c13", "kind": "horizontal", "first_point_id": "p2", "second_point_id": "p3"},
+    {"constraint_id": "c14", "kind": "vertical", "first_point_id": "p3", "second_point_id": "p0"}
+  ],
+  "profile": {
+    "outer_loop": ["p0", "p1", "p2", "p3"],
+    "inner_loops": [["h0", "h3", "h2", "h1"]]
+  },
+  "extrusion_distance": {"kind": "length", "unit": "mm", "value": "10"}
+}
