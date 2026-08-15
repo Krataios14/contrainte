@@ -1,0 +1,165 @@
+{
+  "schema_version": "contrainte.solid-program/0.1",
+  "part_id": "bracket.demo",
+  "revision": "A",
+  "title": "Demonstration pedestal bracket",
+  "material": {
+    "applicability": {"condition": "room-temperature demonstration only"},
+    "designation": "316L demonstration record",
+    "evidence": [
+      {
+        "authority": "Contrainte synthetic fixture",
+        "content": "Synthetic demonstration material record; not for engineering release.",
+        "content_digest": "sha256:d8509eb6540afc9d5ecf2d751c875535523f9b720207da5b230a3d0a9aff66c6",
+        "evidence_id": "EVD-MAT-SYNTHETIC",
+        "kind": "synthetic",
+        "locator": "examples/mounting-plate.json",
+        "retrieved_at": "2026-08-15T00:00:00+02:00",
+        "revision": "1",
+        "title": "Synthetic 316L-like properties"
+      }
+    ],
+    "material_id": "material.synthetic.316l",
+    "properties": {
+      "density": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-DENSITY",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "density",
+        "quantity": {"kind": "density", "unit": "kg/m3", "value": "8000"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "elastic_modulus": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-ELASTIC",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "elastic_modulus",
+        "quantity": {"kind": "pressure", "unit": "GPa", "value": "193"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "poisson_ratio": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-POISSON",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "poisson_ratio",
+        "quantity": {"kind": "dimensionless", "unit": "1", "value": "0.29"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      },
+      "yield_strength": {
+        "applicability": {"condition": "demonstration"},
+        "basis": "assumed",
+        "claim_id": "CLM-MAT-YIELD",
+        "evidence_ids": ["EVD-MAT-SYNTHETIC"],
+        "property": "yield_strength",
+        "quantity": {"kind": "pressure", "unit": "MPa", "value": "215"},
+        "status": "proposed",
+        "subject": "material.synthetic.316l"
+      }
+    },
+    "revision": "1",
+    "schema_version": "contrainte.material-record/0.1",
+    "standard": "synthetic; no standard claim"
+  },
+  "manufacturing": {
+    "process": "3-axis milling",
+    "minimum_feature_size": {"kind": "length", "unit": "mm", "value": "2"}
+  },
+  "limits": {
+    "maximum_mass": {"kind": "mass", "unit": "kg", "value": "10"},
+    "maximum_bounding_box": {
+      "x": {"kind": "length", "unit": "mm", "value": "120"},
+      "y": {"kind": "length", "unit": "mm", "value": "80"},
+      "z": {"kind": "length", "unit": "mm", "value": "60"}
+    }
+  },
+  "nodes": [
+    {
+      "node_id": "base",
+      "operation": "box",
+      "inputs": [],
+      "parameters": {
+        "x": {"kind": "length", "unit": "mm", "value": "100"},
+        "y": {"kind": "length", "unit": "mm", "value": "60"},
+        "z": {"kind": "length", "unit": "mm", "value": "10"}
+      },
+      "transform": {
+        "translation": {
+          "x": {"kind": "length", "unit": "mm", "value": "0"},
+          "y": {"kind": "length", "unit": "mm", "value": "0"},
+          "z": {"kind": "length", "unit": "mm", "value": "0"}
+        },
+        "rotation_xyz_deg": ["0", "0", "0"]
+      }
+    },
+    {
+      "node_id": "tower",
+      "operation": "box",
+      "inputs": [],
+      "parameters": {
+        "x": {"kind": "length", "unit": "mm", "value": "20"},
+        "y": {"kind": "length", "unit": "mm", "value": "20"},
+        "z": {"kind": "length", "unit": "mm", "value": "40"}
+      },
+      "transform": {
+        "translation": {
+          "x": {"kind": "length", "unit": "mm", "value": "0"},
+          "y": {"kind": "length", "unit": "mm", "value": "0"},
+          "z": {"kind": "length", "unit": "mm", "value": "10"}
+        },
+        "rotation_xyz_deg": ["0", "0", "0"]
+      }
+    },
+    {
+      "node_id": "body",
+      "operation": "union",
+      "inputs": ["base", "tower"],
+      "parameters": {},
+      "transform": {
+        "translation": {
+          "x": {"kind": "length", "unit": "mm", "value": "0"},
+          "y": {"kind": "length", "unit": "mm", "value": "0"},
+          "z": {"kind": "length", "unit": "mm", "value": "0"}
+        },
+        "rotation_xyz_deg": ["0", "0", "0"]
+      }
+    },
+    {
+      "node_id": "hole",
+      "operation": "cylinder",
+      "inputs": [],
+      "parameters": {
+        "radius": {"kind": "length", "unit": "mm", "value": "5"},
+        "height": {"kind": "length", "unit": "mm", "value": "50"}
+      },
+      "transform": {
+        "translation": {
+          "x": {"kind": "length", "unit": "mm", "value": "0"},
+          "y": {"kind": "length", "unit": "mm", "value": "0"},
+          "z": {"kind": "length", "unit": "mm", "value": "0"}
+        },
+        "rotation_xyz_deg": ["0", "0", "0"]
+      }
+    },
+    {
+      "node_id": "root",
+      "operation": "cut",
+      "inputs": ["body", "hole"],
+      "parameters": {},
+      "transform": {
+        "translation": {
+          "x": {"kind": "length", "unit": "mm", "value": "0"},
+          "y": {"kind": "length", "unit": "mm", "value": "0"},
+          "z": {"kind": "length", "unit": "mm", "value": "0"}
+        },
+        "rotation_xyz_deg": ["0", "0", "0"]
+      }
+    }
+  ],
+  "output_node_id": "root"
+}
