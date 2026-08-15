@@ -4,6 +4,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from decimal import Decimal
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -282,7 +283,7 @@ def compile_part(part: PrismaticPart, output_directory: str | Path) -> dict[str,
     """Compile one validated feature model through build123d/Open CASCADE."""
 
     try:
-        from build123d import Align, Box, Cylinder, Pos, export_step, export_stl
+        from build123d import export_step, export_stl
     except ImportError as exc:
         raise ExecutionError(
             "the CAD backend is not installed; install Contrainte with the 'cad' extra"
@@ -290,35 +291,15 @@ def compile_part(part: PrismaticPart, output_directory: str | Path) -> dict[str,
 
     destination = Path(output_directory)
     destination.mkdir(parents=True, exist_ok=True)
-    length_mm = float(part.length.to("mm").value)
-    width_mm = float(part.width.to("mm").value)
-    thickness_mm = float(part.thickness.to("mm").value)
-    shape = Box(
-        length_mm,
-        width_mm,
-        thickness_mm,
-        align=(Align.CENTER, Align.CENTER, Align.MIN),
-    )
-    for hole in part.holes:
-        cutter = Pos(
-            float(hole.x.to("mm").value), float(hole.y.to("mm").value), 0
-        ) * Cylinder(
-            float(hole.diameter.to("mm").value / 2),
-            thickness_mm,
-            align=(Align.CENTER, Align.CENTER, Align.MIN),
-        )
-        shape -= cutter
-    shape_valid = shape.is_valid
-    if callable(shape_valid):
-        shape_valid = shape_valid()
-    if not shape_valid:
-        raise ExecutionError("Open CASCADE produced an invalid boundary representation")
+    shape = build_part_shape(part)
 
     step_path = destination / f"{part.part_id}.step"
     stl_path = destination / f"{part.part_id}.stl"
     svg_path = destination / f"{part.part_id}.svg"
-    export_step(shape, step_path)
-    export_stl(shape, stl_path, tolerance=0.01, angular_tolerance=0.1)
+    if not export_step(shape, step_path, timestamp="2000-01-01T00:00:00"):
+        raise ExecutionError("Open CASCADE failed to export STEP geometry")
+    if not export_stl(shape, stl_path, tolerance=0.01, angular_tolerance=0.1):
+        raise ExecutionError("Open CASCADE failed to export STL geometry")
     svg_path.write_text(_top_view_svg(part), encoding="utf-8", newline="\n")
     artifacts = [
         _artifact(step_path, "model/step", "exact_geometry"),
@@ -345,6 +326,8 @@ def compile_part(part: PrismaticPart, output_directory: str | Path) -> dict[str,
         "analytical_properties": part.analytical_properties(),
         "kernel": {
             "backend": "build123d-opencascade",
+            "build123d_version": _package_version("build123d"),
+            "opencascade_distribution_version": _package_version("cadquery-ocp"),
             "shape_valid": True,
             "volume_mm3": decimal_text(kernel_mm3),
             "relative_volume_error": decimal_text(relative_error),
@@ -362,6 +345,42 @@ def compile_part(part: PrismaticPart, output_directory: str | Path) -> dict[str,
     bundle_path = destination / f"{part.part_id}.cad-bundle.json"
     bundle_path.write_text(dumps_pretty(bundle), encoding="utf-8", newline="\n")
     return bundle
+
+
+def build_part_shape(part: PrismaticPart) -> Any:
+    """Build an in-memory exact shape for integration backends."""
+
+    try:
+        from build123d import Align, Box, Cylinder, Pos
+    except ImportError as exc:
+        raise ExecutionError(
+            "the CAD backend is not installed; install Contrainte with the 'cad' extra"
+        ) from exc
+
+    length_mm = float(part.length.to("mm").value)
+    width_mm = float(part.width.to("mm").value)
+    thickness_mm = float(part.thickness.to("mm").value)
+    shape = Box(
+        length_mm,
+        width_mm,
+        thickness_mm,
+        align=(Align.CENTER, Align.CENTER, Align.MIN),
+    )
+    for hole in part.holes:
+        cutter = Pos(
+            float(hole.x.to("mm").value), float(hole.y.to("mm").value), 0
+        ) * Cylinder(
+            float(hole.diameter.to("mm").value / 2),
+            thickness_mm,
+            align=(Align.CENTER, Align.CENTER, Align.MIN),
+        )
+        shape -= cutter
+    shape_valid = shape.is_valid
+    if callable(shape_valid):
+        shape_valid = shape_valid()
+    if not shape_valid:
+        raise ExecutionError("Open CASCADE produced an invalid boundary representation")
+    return shape
 
 
 def verify_cad_bundle(bundle_path: str | Path) -> dict[str, str]:
@@ -413,6 +432,13 @@ def _artifact(path: Path, media_type: str, role: str) -> dict[str, Any]:
         "digest": _file_digest(path),
         "size_bytes": path.stat().st_size,
     }
+
+
+def _package_version(distribution: str) -> str:
+    try:
+        return version(distribution)
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def _top_view_svg(part: PrismaticPart) -> str:
