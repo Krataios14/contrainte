@@ -1,0 +1,57 @@
+{
+  "goal": {
+    "assumptions": [],
+    "constraints": ["No unresolved hard collisions"],
+    "exclusions": ["Production release"],
+    "intended_use": "Engineering exploration",
+    "locale": "fr-FR",
+    "statement": "Concevoir un mécanisme indexé et caréné",
+    "success_criteria": ["Every requirement traces to verification evidence"]
+  },
+  "metadata": {"profile": "machine"},
+  "program_id": "machine.indexer-demo",
+  "revision": "1",
+  "schema_version": "contrainte.design-program/0.1",
+  "tasks": [
+    {
+      "acceptance_criteria": ["Every ambiguity is explicit"],
+      "authority": "dual",
+      "depends_on": [],
+      "human_gate": false,
+      "inputs": [],
+      "instructions": ["Separate facts, assumptions, proposals, and unknowns"],
+      "kind": "requirements",
+      "objective": "Convert the brief into testable requirements",
+      "outputs": [
+        {
+          "media_type": "application/json",
+          "product_id": "requirements",
+          "required": true,
+          "role": "engineering_record"
+        }
+      ],
+      "task_id": "requirements",
+      "title": "Requirements"
+    },
+    {
+      "acceptance_criteria": ["The exact B-rep is valid and every feature constraint closes"],
+      "authority": "deterministic",
+      "depends_on": ["requirements"],
+      "human_gate": false,
+      "inputs": ["requirements"],
+      "instructions": [],
+      "kind": "cad",
+      "objective": "Compile exact constrained geometry",
+      "outputs": [
+        {
+          "media_type": "model/step",
+          "product_id": "exact-cad",
+          "required": true,
+          "role": "exact_geometry"
+        }
+      ],
+      "task_id": "cad",
+      "title": "Exact CAD"
+    }
+  ]
+}
