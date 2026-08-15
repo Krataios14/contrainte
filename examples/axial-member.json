@@ -1,0 +1,104 @@
+{
+  "schema_version": "contrainte.axial-case/0.1",
+  "design_id": "DES-DEMO-AXIAL-001",
+  "title": "Synthetic axial member",
+  "effective_at": "2026-08-14T12:00:00+02:00",
+  "evidence": [
+    {
+      "evidence_id": "EVD-DEMO-GEOMETRY",
+      "kind": "synthetic",
+      "title": "Synthetic geometry values",
+      "authority": "Contrainte demonstration fixture",
+      "locator": "urn:contrainte:demo:geometry:1",
+      "revision": "1",
+      "retrieved_at": "2026-08-14T12:00:00+02:00",
+      "content": "Synthetic demonstration dimensions; not valid for engineering release.",
+      "content_digest": "sha256:963a7840c89cee7464e9b300824f87af7267d8e289736d20ed550eb4154a30d6"
+    },
+    {
+      "evidence_id": "EVD-DEMO-MATERIAL",
+      "kind": "synthetic",
+      "title": "Synthetic material values",
+      "authority": "Contrainte demonstration fixture",
+      "locator": "urn:contrainte:demo:material:1",
+      "revision": "1",
+      "retrieved_at": "2026-08-14T12:00:00+02:00",
+      "content": "Synthetic demonstration properties; not valid for engineering release.",
+      "content_digest": "sha256:9e7993554576ca519ba654c9bc090308c451cd35cfd88f68f18bdb03feece748"
+    },
+    {
+      "evidence_id": "EVD-DEMO-LOAD",
+      "kind": "synthetic",
+      "title": "Synthetic load value",
+      "authority": "Contrainte demonstration fixture",
+      "locator": "urn:contrainte:demo:load:1",
+      "revision": "1",
+      "retrieved_at": "2026-08-14T12:00:00+02:00",
+      "content": "Synthetic demonstration load; not valid for engineering release.",
+      "content_digest": "sha256:05d9a626020fb02ba59115a67f04e9650b469f4cfc316c0cd7c3509a09d6c6f6"
+    }
+  ],
+  "claims": {
+    "length": {
+      "claim_id": "CLM-LENGTH",
+      "subject": "DES-DEMO-AXIAL-001",
+      "property": "length",
+      "quantity": {"value": "500", "unit": "mm", "kind": "length"},
+      "basis": "assumed",
+      "status": "proposed",
+      "evidence_ids": ["EVD-DEMO-GEOMETRY"],
+      "applicability": {"scope": "demonstration_only"}
+    },
+    "width": {
+      "claim_id": "CLM-WIDTH",
+      "subject": "DES-DEMO-AXIAL-001",
+      "property": "width",
+      "quantity": {"value": "20", "unit": "mm", "kind": "length"},
+      "basis": "assumed",
+      "status": "proposed",
+      "evidence_ids": ["EVD-DEMO-GEOMETRY"],
+      "applicability": {"scope": "demonstration_only"}
+    },
+    "thickness": {
+      "claim_id": "CLM-THICKNESS",
+      "subject": "DES-DEMO-AXIAL-001",
+      "property": "thickness",
+      "quantity": {"value": "5", "unit": "mm", "kind": "length"},
+      "basis": "assumed",
+      "status": "proposed",
+      "evidence_ids": ["EVD-DEMO-GEOMETRY"],
+      "applicability": {"scope": "demonstration_only"}
+    },
+    "elastic_modulus": {
+      "claim_id": "CLM-ELASTIC-MODULUS",
+      "subject": "MAT-DEMO-001",
+      "property": "elastic_modulus",
+      "quantity": {"value": "200", "unit": "GPa", "kind": "pressure"},
+      "basis": "assumed",
+      "status": "proposed",
+      "evidence_ids": ["EVD-DEMO-MATERIAL"],
+      "applicability": {"scope": "demonstration_only", "temperature": "unspecified"}
+    },
+    "yield_strength": {
+      "claim_id": "CLM-YIELD-STRENGTH",
+      "subject": "MAT-DEMO-001",
+      "property": "yield_strength",
+      "quantity": {"value": "250", "unit": "MPa", "kind": "pressure"},
+      "basis": "assumed",
+      "status": "proposed",
+      "evidence_ids": ["EVD-DEMO-MATERIAL"],
+      "applicability": {"scope": "demonstration_only", "temperature": "unspecified"}
+    },
+    "tensile_load": {
+      "claim_id": "CLM-TENSILE-LOAD",
+      "subject": "DES-DEMO-AXIAL-001",
+      "property": "tensile_load",
+      "quantity": {"value": "10", "unit": "kN", "kind": "force"},
+      "basis": "assumed",
+      "status": "proposed",
+      "evidence_ids": ["EVD-DEMO-LOAD"],
+      "applicability": {"scope": "demonstration_only", "load_case": "centered_static_tension"}
+    }
+  }
+}
+
