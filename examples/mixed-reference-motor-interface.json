@@ -1,0 +1,579 @@
+{
+  "candidate_budget": 1,
+  "mates": [
+    {
+      "alternatives": [
+        {
+          "alternative_id": "coincident",
+          "preference_rank": 0,
+          "second_interface_in_first_interface": {
+            "basis": {
+              "x_axis": {
+                "x": "1",
+                "y": "0",
+                "z": "0"
+              },
+              "y_axis": {
+                "x": "0",
+                "y": "1",
+                "z": "0"
+              },
+              "z_axis": {
+                "x": "0",
+                "y": "0",
+                "z": "1"
+              }
+            },
+            "schema_version": "contrainte.exact-rigid-transform/0.1",
+            "translation": {
+              "x": "0",
+              "y": "0",
+              "z": "0"
+            },
+            "unit": "mm"
+          }
+        }
+      ],
+      "first": {
+        "interface_id": "mount",
+        "occurrence_id": "traction-motor"
+      },
+      "mate_id": "motor-mount",
+      "property_keys": [
+        "bolt-pattern"
+      ],
+      "second": {
+        "interface_id": "mount",
+        "occurrence_id": "surrounding-bracket"
+      }
+    }
+  ],
+  "occurrences": [
+    {
+      "occurrence_id": "surrounding-bracket",
+      "participant": {
+        "component": {
+          "artifacts": [
+            {
+              "artifact_id": "bundle",
+              "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "locator": "bundle.json",
+              "media_type": "application/json",
+              "role": "engineering_bundle"
+            }
+          ],
+          "capabilities": [],
+          "component_id": "surrounding-bracket",
+          "geometry_bounds": {
+            "frame": "engineering_bundle",
+            "maximum": {
+              "x": "10",
+              "y": "10",
+              "z": "10"
+            },
+            "minimum": {
+              "x": "-10",
+              "y": "-10",
+              "z": "-10"
+            },
+            "unit": "mm"
+          },
+          "interfaces": [
+            {
+              "direction": "bidirectional",
+              "frame": {
+                "basis": {
+                  "x_axis": {
+                    "x": "1",
+                    "y": "0",
+                    "z": "0"
+                  },
+                  "y_axis": {
+                    "x": "0",
+                    "y": "1",
+                    "z": "0"
+                  },
+                  "z_axis": {
+                    "x": "0",
+                    "y": "0",
+                    "z": "1"
+                  }
+                },
+                "origin": {
+                  "x": "0",
+                  "y": "0",
+                  "z": "0"
+                },
+                "reference": "engineering_bundle",
+                "unit": "mm"
+              },
+              "interface_id": "mount",
+              "kind": "mechanical",
+              "medium": "bolted-flange",
+              "properties": {
+                "bolt-pattern": "4xM8-PCD100"
+              }
+            }
+          ],
+          "lifecycle_state": "concept",
+          "metadata": {},
+          "qualification": "unqualified_demonstration",
+          "revision": "A",
+          "schema_version": "contrainte.component-manifest/0.3",
+          "source_bundle_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "title": "Synthetic surrounding bracket"
+        },
+        "kind": "released_component"
+      }
+    },
+    {
+      "anchor_transform": {
+        "basis": {
+          "x_axis": {
+            "x": "1",
+            "y": "0",
+            "z": "0"
+          },
+          "y_axis": {
+            "x": "0",
+            "y": "1",
+            "z": "0"
+          },
+          "z_axis": {
+            "x": "0",
+            "y": "0",
+            "z": "1"
+          }
+        },
+        "schema_version": "contrainte.exact-rigid-transform/0.1",
+        "translation": {
+          "x": "0",
+          "y": "0",
+          "z": "0"
+        },
+        "unit": "mm"
+      },
+      "occurrence_id": "traction-motor",
+      "participant": {
+        "design_around_projection": {
+          "content_digest": "sha256:b3cd15eccf5eeec6baef23097fdc6192eff52daac7a0735c0f6d89ce477a31e7",
+          "evidence_blockers": [
+            "evidence-resolution:/mass_properties",
+            "unknown:/performance/torque_curve"
+          ],
+          "flexible_bindings": [
+            {
+              "domain": "cooling",
+              "interface_ids": [
+                "mount"
+              ]
+            },
+            {
+              "domain": "mounting",
+              "interface_ids": [
+                "mount"
+              ]
+            },
+            {
+              "domain": "transmission",
+              "interface_ids": [
+                "mount"
+              ]
+            }
+          ],
+          "legal_gate_disclaimer": "Project workflow dispositions only; not legal determinations or advice.",
+          "occurrence_id": "traction-motor",
+          "protected_constraints": [
+            {
+              "authority": null,
+              "constraint_id": "allowed-operations",
+              "evidence_ids": [],
+              "kind": "allowed_operations",
+              "resolution_required": false,
+              "source_path": "/allowed_operations",
+              "value_digest": "sha256:f272e2008f33c4ff12e5b9c66c064b8eac8b2dec663a486943ee2445046d416e"
+            },
+            {
+              "authority": "documented_source",
+              "constraint_id": "clearance:service-zone",
+              "evidence_ids": [
+                "drawing"
+              ],
+              "kind": "clearance",
+              "resolution_required": false,
+              "source_path": "/request/clearances/service-zone",
+              "value_digest": "sha256:cbdd8096344a45429b1d9bdd3f336dd9f598801cf9df3a822085ec7fc92586e5"
+            },
+            {
+              "authority": "documented_source",
+              "constraint_id": "envelope:service-zone",
+              "evidence_ids": [
+                "drawing"
+              ],
+              "kind": "envelope",
+              "resolution_required": false,
+              "source_path": "/envelopes/service-zone",
+              "value_digest": "sha256:da7ea5b90e819f40019ecc6e77fa5ea83446589e3c07c66b9f1f09c40c3cd96d"
+            },
+            {
+              "authority": "documented_source",
+              "constraint_id": "frame:mount",
+              "evidence_ids": [
+                "drawing"
+              ],
+              "kind": "frame",
+              "resolution_required": false,
+              "source_path": "/reference_frames/mount",
+              "value_digest": "sha256:49230a0dfafb0071e055baeac84702e837ffe68416ca7c74eb6f5b3a55ec1d37"
+            },
+            {
+              "authority": "informative",
+              "constraint_id": "gate:authenticity",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "kind": "evidence_gate",
+              "resolution_required": false,
+              "source_path": "/evidence_gates/authenticity",
+              "value_digest": "sha256:5f8c56787d1bf5c223e18d6035198ddb277fc38d0e60fb1f5a4543894d5fdefa"
+            },
+            {
+              "authority": "informative",
+              "constraint_id": "gate:export_control",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "kind": "evidence_gate",
+              "resolution_required": false,
+              "source_path": "/evidence_gates/export_control",
+              "value_digest": "sha256:c1a25366c7ffdba4128e3c7a890fcf145fb214a925aca9934100dfe2aba64fd2"
+            },
+            {
+              "authority": "informative",
+              "constraint_id": "gate:freedom_to_operate",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "kind": "evidence_gate",
+              "resolution_required": false,
+              "source_path": "/evidence_gates/freedom_to_operate",
+              "value_digest": "sha256:6aadec6d5306a05393613ed97c615f29da878299046f99021535a8c0feed6eed"
+            },
+            {
+              "authority": "informative",
+              "constraint_id": "gate:rights_to_modify",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "kind": "evidence_gate",
+              "resolution_required": false,
+              "source_path": "/evidence_gates/rights_to_modify",
+              "value_digest": "sha256:3c87e2c53a68796bcc20577db916347cd140e07813e02f1b5ed3b9c883929a56"
+            },
+            {
+              "authority": "informative",
+              "constraint_id": "gate:rights_to_use",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "kind": "evidence_gate",
+              "resolution_required": false,
+              "source_path": "/evidence_gates/rights_to_use",
+              "value_digest": "sha256:195c77832150abdf6eacb8491fcfec91603180ce5832331f4f96c0519c8e2c70"
+            },
+            {
+              "authority": "documented_source",
+              "constraint_id": "identity",
+              "evidence_ids": [
+                "drawing"
+              ],
+              "kind": "identity",
+              "resolution_required": false,
+              "source_path": "/identity",
+              "value_digest": "sha256:dcf85509f72d550eea11b879e9fa597e6363d9a93338775e7be10eeb85f86ab7"
+            },
+            {
+              "authority": "documented_source",
+              "constraint_id": "known:31ee45b9172ea329",
+              "evidence_ids": [
+                "drawing"
+              ],
+              "kind": "known_field",
+              "resolution_required": false,
+              "source_path": "/revision",
+              "value_digest": "sha256:c2e8c0cc2e73b9bd1ba9ef1979e73169b471e25b0e9909efe98fde462c0bf55f"
+            },
+            {
+              "authority": "informative",
+              "constraint_id": "mass-properties",
+              "evidence_ids": [
+                "mass-test"
+              ],
+              "kind": "mass_properties",
+              "resolution_required": true,
+              "source_path": "/mass_properties",
+              "value_digest": "sha256:ce5bfe7d59ab218e951d12a189c49c7671276a7e718fbcf378df5cdeee76df3f"
+            },
+            {
+              "authority": "documented_source",
+              "constraint_id": "occupied-bounds",
+              "evidence_ids": [
+                "drawing"
+              ],
+              "kind": "occupied_bounds",
+              "resolution_required": false,
+              "source_path": "/occupied_bounds",
+              "value_digest": "sha256:89153a593fe89b1095c86c47b833ccaa79f07a4b1ec20dc31cd56c97f8c0f046"
+            },
+            {
+              "authority": "documented_source",
+              "constraint_id": "source-model",
+              "evidence_ids": [
+                "drawing"
+              ],
+              "kind": "source_model",
+              "resolution_required": false,
+              "source_path": "/source_model_digest",
+              "value_digest": "sha256:3cddf4beaa00f21fa3c5be0443eb85b6735f9d396f1c2d670d8c5f9147d68d10"
+            },
+            {
+              "authority": null,
+              "constraint_id": "unknown:a44461ffe2e66fc9",
+              "evidence_ids": [],
+              "kind": "unknown_field",
+              "resolution_required": true,
+              "source_path": "/performance/torque_curve",
+              "value_digest": "sha256:e31660017a5e83dd1fcd559f17971d2b447fe616a3b3f7031ad528471e7e0712"
+            }
+          ],
+          "reference_component_digest": "sha256:308f13c806ebb6b46dd749543b0c9705106b0bf25333f0bccb9ea4f1645e657c",
+          "request_digest": "sha256:8131facead9c0b81825a327ad34c87b3009ea61e5e7b2f0ac249b98e4b65c3e4",
+          "schema_version": "contrainte.design-around-projection/0.1"
+        },
+        "design_around_request": {
+          "clearances": [
+            {
+              "clearance_mm": "5",
+              "envelope_id": "service-zone"
+            }
+          ],
+          "content_digest": "sha256:8131facead9c0b81825a327ad34c87b3009ea61e5e7b2f0ac249b98e4b65c3e4",
+          "flexible_domains": [
+            "cooling",
+            "mounting",
+            "transmission"
+          ],
+          "occurrence_id": "traction-motor",
+          "reference_component_digest": "sha256:308f13c806ebb6b46dd749543b0c9705106b0bf25333f0bccb9ea4f1645e657c",
+          "request_id": "motor-installation",
+          "required_interface_ids": [
+            "mount"
+          ],
+          "schema_version": "contrainte.design-around-request/0.1"
+        },
+        "kind": "protected_reference",
+        "reference_component": {
+          "allowed_operations": [
+            "attach_at_declared_interface",
+            "rigid_placement"
+          ],
+          "component_id": "motor-001",
+          "content_digest": "sha256:308f13c806ebb6b46dd749543b0c9705106b0bf25333f0bccb9ea4f1645e657c",
+          "envelopes": [
+            {
+              "bounds": {
+                "maximum": {
+                  "x": "75",
+                  "y": "75",
+                  "z": "150"
+                },
+                "minimum": {
+                  "x": "-75",
+                  "y": "-75",
+                  "z": "-125"
+                },
+                "unit": "mm"
+              },
+              "envelope_id": "service-zone",
+              "evidence_id": "drawing",
+              "purpose": "service"
+            }
+          ],
+          "evidence": [
+            {
+              "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "authority": "documented_source",
+              "evidence_id": "drawing",
+              "kind": "manufacturer_drawing",
+              "locator": "vendor://EM-42/rev-C/drawing",
+              "supports": [
+                "/envelopes/service-zone",
+                "/identity",
+                "/occupied_bounds",
+                "/reference_frames/mount",
+                "/revision"
+              ]
+            },
+            {
+              "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "authority": "informative",
+              "evidence_id": "legal-review",
+              "kind": "declaration",
+              "locator": "project://review/example-only",
+              "supports": [
+                "/evidence_gates"
+              ]
+            },
+            {
+              "artifact_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "authority": "informative",
+              "evidence_id": "mass-test",
+              "kind": "test_report",
+              "locator": "lab://mass/example-only",
+              "supports": [
+                "/mass_properties"
+              ]
+            }
+          ],
+          "evidence_gates": [
+            {
+              "disposition": "accepted_for_project",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "name": "authenticity",
+              "rationale": "Synthetic project review; not a legal conclusion."
+            },
+            {
+              "disposition": "accepted_for_project",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "name": "rights_to_use",
+              "rationale": "Synthetic project review; not a legal conclusion."
+            },
+            {
+              "disposition": "accepted_for_project",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "name": "rights_to_modify",
+              "rationale": "Synthetic project review; not a legal conclusion."
+            },
+            {
+              "disposition": "accepted_for_project",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "name": "freedom_to_operate",
+              "rationale": "Synthetic project review; not a legal conclusion."
+            },
+            {
+              "disposition": "accepted_for_project",
+              "evidence_ids": [
+                "legal-review"
+              ],
+              "name": "export_control",
+              "rationale": "Synthetic project review; not a legal conclusion."
+            }
+          ],
+          "known_fields": [
+            {
+              "evidence_id": "drawing",
+              "field_path": "/revision"
+            }
+          ],
+          "legal_gate_disclaimer": "Project workflow dispositions only; not legal determinations or advice.",
+          "manufacturer": "Example Motors",
+          "mass_properties": {
+            "center_of_mass": {
+              "x": "0",
+              "y": "0",
+              "z": "5"
+            },
+            "evidence_id": "mass-test",
+            "inertia_kg_mm2": {
+              "ixx": "1000",
+              "ixy": "0",
+              "ixz": "0",
+              "iyy": "1000",
+              "iyz": "0",
+              "izz": "500"
+            },
+            "inertia_reference": "center_of_mass",
+            "mass_kg": "18"
+          },
+          "occupied_bounds": {
+            "maximum": {
+              "x": "50",
+              "y": "50",
+              "z": "100"
+            },
+            "minimum": {
+              "x": "-50",
+              "y": "-50",
+              "z": "-100"
+            },
+            "unit": "mm"
+          },
+          "occupied_bounds_evidence_id": "drawing",
+          "part_number": "EM-42",
+          "reference_frames": [
+            {
+              "evidence_id": "drawing",
+              "frame_id": "mount",
+              "interface": {
+                "direction": "bidirectional",
+                "kind": "mechanical",
+                "medium": "bolted-flange",
+                "properties": {
+                  "bolt-pattern": "4xM8-PCD100"
+                }
+              },
+              "role": "interface",
+              "transform": {
+                "basis": {
+                  "x_axis": {
+                    "x": "1",
+                    "y": "0",
+                    "z": "0"
+                  },
+                  "y_axis": {
+                    "x": "0",
+                    "y": "1",
+                    "z": "0"
+                  },
+                  "z_axis": {
+                    "x": "0",
+                    "y": "0",
+                    "z": "1"
+                  }
+                },
+                "schema_version": "contrainte.exact-rigid-transform/0.1",
+                "translation": {
+                  "x": "0",
+                  "y": "0",
+                  "z": "0"
+                },
+                "unit": "mm"
+              }
+            }
+          ],
+          "revision": "C",
+          "schema_version": "contrainte.reference-component/0.1",
+          "source_model_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "title": "Synthetic fixed traction motor",
+          "unit": "mm",
+          "unknown_fields": [
+            {
+              "consequence": "Do not release transmission or inverter sizing.",
+              "field_path": "/performance/torque_curve",
+              "required_evidence": "Authenticated torque-speed and derating map."
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "schema_version": "contrainte.interface-assembly/0.2"
+}
