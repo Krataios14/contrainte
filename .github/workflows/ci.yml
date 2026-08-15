@@ -42,3 +42,9 @@ jobs:
           python -m contrainte sketch verify artifacts/constrained-pocket-plate/plate.sketch.demo.sketch-bundle.json
           python -m contrainte component derive artifacts/constrained-pocket-plate/plate.sketch.demo.sketch-bundle.json examples/pedestal-component.json --output artifacts/constrained-pocket-plate/component.fixture.demo.json
           python -m contrainte component verify artifacts/constrained-pocket-plate/component.fixture.demo.json
+      - name: Exercise circular sketch release chain
+        run: |
+          python -m contrainte sketch compile examples/circular-through-hole-plate.json --output-dir artifacts/circular-through-hole-plate
+          python -m contrainte sketch verify artifacts/circular-through-hole-plate/plate.circular.demo.sketch-bundle.json
+          python -m contrainte component derive artifacts/circular-through-hole-plate/plate.circular.demo.sketch-bundle.json examples/pedestal-component.json --output artifacts/circular-through-hole-plate/component.fixture.demo.json
+          python -m contrainte component verify artifacts/circular-through-hole-plate/component.fixture.demo.json
