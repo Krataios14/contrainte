@@ -9,6 +9,7 @@ from .component import (
     ComponentManifest,
     ExactInterfaceFrame,
 )
+from .exact_transform import ExactRigidTransform, ExactRotation3, ExactVector3
 from .materials import MaterialRecord
 from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
@@ -39,6 +40,9 @@ __all__ = [
     "DesignTask",
     "DesignWorkspace",
     "ExactInterfaceFrame",
+    "ExactRigidTransform",
+    "ExactRotation3",
+    "ExactVector3",
     "GoalContract",
     "MaterialRecord",
     "ObjectRef",
