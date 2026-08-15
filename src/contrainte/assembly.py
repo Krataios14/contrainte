@@ -6,13 +6,14 @@ import itertools
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, localcontext
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 from .cad import PrismaticPart, build_part_shape
 from .canonical import decimal_text, digest, dumps_pretty, loads_strict
 from .errors import ExecutionError, InputError, IntegrityError
+from .geometry import RigidTransform, kernel_measurement
 from .units import Quantity
 
 ASSEMBLY_SCHEMA = "contrainte.assembly/0.1"
@@ -20,7 +21,6 @@ ASSEMBLY_BUNDLE_SCHEMA = "contrainte.assembly-bundle/0.1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _INTERFERENCE_TOLERANCE_MM3 = Decimal("0.000001")
 _DISTANCE_TOLERANCE_MM = Decimal("0.000001")
-_KERNEL_REPORT_QUANTUM = Decimal("0.000000001")
 
 
 def _string(raw: Mapping[str, Any], name: str, field: str) -> str:
@@ -37,61 +37,6 @@ def _length(raw: Any, field: str, *, non_negative: bool = False) -> Quantity:
     if non_negative and value.value < 0:
         raise InputError(f"{field} must be non-negative")
     return value
-
-
-def _angle(value: Any, field: str) -> Decimal:
-    if not isinstance(value, str):
-        raise InputError(f"{field} must be a decimal string in degrees")
-    try:
-        angle = Decimal(value)
-    except InvalidOperation as exc:
-        raise InputError(f"{field} is not a valid decimal angle") from exc
-    if not angle.is_finite() or angle < -180 or angle > 180:
-        raise InputError(f"{field} must be finite and within [-180, 180] degrees")
-    return angle
-
-
-@dataclass(frozen=True)
-class RigidTransform:
-    x: Quantity
-    y: Quantity
-    z: Quantity
-    rotation_xyz_deg: tuple[Decimal, Decimal, Decimal]
-
-    @classmethod
-    def from_dict(cls, raw: Any, *, field: str) -> RigidTransform:
-        if not isinstance(raw, dict):
-            raise InputError(f"{field} must be an object")
-        if set(raw) != {"translation", "rotation_xyz_deg"}:
-            raise InputError(
-                f"{field} must contain exactly translation and rotation_xyz_deg"
-            )
-        translation = raw.get("translation")
-        if not isinstance(translation, dict) or set(translation) != {"x", "y", "z"}:
-            raise InputError(f"{field}.translation must contain exactly x, y, and z")
-        rotation = raw.get("rotation_xyz_deg")
-        if not isinstance(rotation, list) or len(rotation) != 3:
-            raise InputError(f"{field}.rotation_xyz_deg must contain three angles")
-        parsed_rotation = tuple(
-            _angle(item, f"{field}.rotation_xyz_deg[{index}]")
-            for index, item in enumerate(rotation)
-        )
-        return cls(
-            x=_length(translation["x"], f"{field}.translation.x"),
-            y=_length(translation["y"], f"{field}.translation.y"),
-            z=_length(translation["z"], f"{field}.translation.z"),
-            rotation_xyz_deg=parsed_rotation,  # type: ignore[arg-type]
-        )
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "translation": {
-                "x": self.x.as_dict(),
-                "y": self.y.as_dict(),
-                "z": self.z.as_dict(),
-            },
-            "rotation_xyz_deg": [decimal_text(item) for item in self.rotation_xyz_deg],
-        }
 
 
 @dataclass(frozen=True)
@@ -341,12 +286,12 @@ def analyze_assembly(assembly: Assembly) -> tuple[dict[str, Any], Any]:
         first_shape = placed[first.occurrence_id]
         second_shape = placed[second.occurrence_id]
         raw_distance = Decimal(str(first_shape.distance_to(second_shape)))
-        distance = _kernel_measurement(raw_distance)
+        distance = kernel_measurement(raw_distance)
         intersection = first_shape & second_shape
         raw_interference_volume = sum(
             (Decimal(str(solid.volume)) for solid in intersection.solids()), Decimal(0)
         )
-        interference_volume = _kernel_measurement(raw_interference_volume)
+        interference_volume = kernel_measurement(raw_interference_volume)
         required = assembly.clearance_for(
             first.occurrence_id, second.occurrence_id
         ).to("mm").value
@@ -397,9 +342,9 @@ def analyze_assembly(assembly: Assembly) -> tuple[dict[str, Any], Any]:
         "pair_count": len(pair_results),
         "total_mass_kg": decimal_text(total_mass),
         "bounding_box_mm": {
-            "x": decimal_text(_kernel_measurement(bounds.X)),
-            "y": decimal_text(_kernel_measurement(bounds.Y)),
-            "z": decimal_text(_kernel_measurement(bounds.Z)),
+            "x": decimal_text(kernel_measurement(bounds.X)),
+            "y": decimal_text(kernel_measurement(bounds.Y)),
+            "z": decimal_text(kernel_measurement(bounds.Z)),
         },
         "pair_results": pair_results,
         "failures": failures,
@@ -529,12 +474,3 @@ def _normalize_step_occurrence_identifiers(path: Path) -> None:
         path.write_text(normalized, encoding="utf-8", newline="\n")
     except OSError as exc:
         raise ExecutionError(f"cannot normalize exported STEP file: {exc}") from exc
-
-
-def _kernel_measurement(value: Any) -> Decimal:
-    measurement = value if isinstance(value, Decimal) else Decimal(str(value))
-    if not measurement.is_finite():
-        raise ExecutionError("Open CASCADE returned a non-finite measurement")
-    with localcontext() as context:
-        context.prec = 50
-        return measurement.quantize(_KERNEL_REPORT_QUANTUM)
