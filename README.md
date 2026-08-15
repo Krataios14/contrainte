@@ -117,12 +117,19 @@ Compile a solved interface result against B-reps reproduced from actual local co
 python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/component-pair-source
 python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-left-release.json --output artifacts/component-pair-source/left.component.json
 python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-right-release.json --output artifacts/component-pair-source/right.component.json
-python -m contrainte interface-assembly verify examples/component-pair-interface.json examples/component-pair-interface-result.json
-python -m contrainte component-assembly compile examples/component-pair-assembly.json --source-root . --output-dir artifacts/component-pair-assembly
+python -m contrainte component-assembly prepare examples/component-pair-interface.json examples/component-pair-assembly.json --source-root . --output-dir artifacts/component-pair-prepared
+python -m contrainte interface-assembly verify artifacts/component-pair-prepared/component-pair.interface.json artifacts/component-pair-prepared/component-pair.interface-result.json
+python -m contrainte component-assembly compile artifacts/component-pair-prepared/component-pair.component-assembly.json --source-root . --output-dir artifacts/component-pair-assembly
 python -m contrainte component-assembly verify artifacts/component-pair-assembly/component-pair.component-assembly-bundle.json --source-root .
 ```
 
-The checked-in pair fixture is completed by its CAD, component-derive, and interface-solve commands in CI. Exact rational transforms remain semantic authority; their direct Open CASCADE matrix projection and every nominal B-rep pair decision are separately recorded. This is not tolerance, motion, joint, load, or service-space verification.
+The checked-in pair templates are completed by CAD compilation, local component
+derivation, and the platform-local preparation step in CI. Preparation replaces
+template manifests, solves and replays the interface equations, and writes a
+strict compile input pinned to the exact local release bytes. Exact rational
+transforms remain semantic authority; their direct Open CASCADE matrix projection
+and every nominal B-rep pair decision are separately recorded. This is not
+tolerance, motion, joint, load, or service-space verification.
 
 Protect an existing component before surrounding design begins:
 

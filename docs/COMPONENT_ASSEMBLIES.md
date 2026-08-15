@@ -152,14 +152,70 @@ enters the evidence identity:
 python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/component-pair-source
 python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-left-release.json --output artifacts/component-pair-source/left.component.json
 python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-right-release.json --output artifacts/component-pair-source/right.component.json
-python -m contrainte interface-assembly verify examples/component-pair-interface.json examples/component-pair-interface-result.json
-python -m contrainte component-assembly compile examples/component-pair-assembly.json --source-root . --output-dir artifacts/component-pair-assembly
+python -m contrainte component-assembly prepare examples/component-pair-interface.json examples/component-pair-assembly.json --source-root . --output-dir artifacts/component-pair-prepared
+python -m contrainte interface-assembly verify artifacts/component-pair-prepared/component-pair.interface.json artifacts/component-pair-prepared/component-pair.interface-result.json
+python -m contrainte component-assembly compile artifacts/component-pair-prepared/component-pair.component-assembly.json --source-root . --output-dir artifacts/component-pair-assembly
 python -m contrainte component-assembly verify artifacts/component-pair-assembly/component-pair.component-assembly-bundle.json --source-root .
 ```
 
-The complete example first compiles the component CAD bundle, derives both framed
-component manifests, and solves the checked-in interface assembly. The CI workflow
-replays the entire chain before compiling the component assembly.
+The first two JSON arguments to `prepare` are authoring templates. Their embedded
+component manifests and digest fields show the intended topology and bindings;
+they are not portable compile inputs. Exact CAD serialization can differ between
+supported Open CASCADE platforms, so a release freshly derived on the current
+platform can legitimately have different artifact, source-bundle, manifest-file,
+and manifest semantic digests.
+
+`prepare` resolves both templates and every binding locator beneath the explicit
+source root. It stable-captures and fully reproduces each current local release,
+replaces every interface occurrence's embedded manifest, solves the resulting
+exact interface assembly, and independently replays the result. It then emits
+three canonical files beneath the source root:
+
+- `<assembly-id>.interface.json` with the current embedded manifests;
+- `<assembly-id>.interface-result.json` with the newly replayed exact solution;
+  and
+- `<assembly-id>.component-assembly.json` with exact file digests for both files
+  plus the current file and semantic digest for every component manifest.
+
+The prepared component assembly is strictly reloaded and its entire source
+context is replayed before the command succeeds. Preparation does not weaken the
+compile schema, accept an unpinned source, or make platform-independent geometry
+claims. It is a deterministic authoring step that creates a fully digest-bound
+compile input for the platform-derived local releases actually present. Repeating
+it over unchanged snapshots emits byte-identical documents. The CI workflow uses
+that prepared input to exercise the complete clean-clone chain.
+
+The output directory is an exact three-file transaction. It must be absent,
+empty, or contain exactly one prior direct, single-link prepared set; partial
+sets, foreign entries, links, reparse points, hard links, and non-regular entries
+are rejected. All three canonical byte strings are first written and stably
+verified in an unpredictable private direct sibling directory. POSIX transaction
+directories and files are created with owner-only permissions; Windows uses the
+calling identity's inherited ACL together with retained no-delete handles. The
+complete staged directory is then promoted as one set. If staging, promotion,
+strict reload, source replay, final capture, or deletion of the replaced backup
+fails, the cached previous complete directory is reconstructed and restored
+byte-for-byte as the sole visible destination, or no new visible directory
+remains when there was no prior set.
+
+Preparation binds the identity and direct-directory state of the source root and
+every traversed template, release, and output ancestor. Those bindings are
+rechecked before and after stable reads, release replay, staging writes,
+promotion, strict context replay, and final capture. Replacing an ancestor with a
+different directory, symbolic link, or Windows reparse point aborts the
+transaction. The returned file digests are calculated from the final stable
+canonical snapshots, not from earlier in-memory intentions or semantic reparses.
+On POSIX, visible-name checks compare the retained descriptor with `stat` through
+its retained parent descriptor, so preparation works on Linux, macOS, and BSD and
+does not require procfs.
+
+This transaction boundary rejects every pre-existing or observed hard-link alias.
+It is not an operating-system containment boundary against a privileged process,
+or a cooperating concurrent process running as the same filesystem identity,
+that discovers a private staged file and races an alias into existence between a
+link-count check and subsequent use, or after the final check. Run authoring in a
+workspace whose write access is limited to the trusted build identity when that
+threat is relevant.
 
 ## Deliberate limits and nonclaims
 
