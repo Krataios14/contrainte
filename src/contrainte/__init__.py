@@ -15,6 +15,7 @@ from .component_assembly import (
     ComponentPairClearance,
     SourceFileRef,
     compile_component_assembly,
+    prepare_component_assembly,
     verify_component_assembly_bundle,
 )
 from .exact_transform import ExactRigidTransform, ExactRotation3, ExactVector3
@@ -113,6 +114,7 @@ __all__ = [
     "compile_part",
     "compile_sketch_extrusion",
     "derive_component_manifest",
+    "prepare_component_assembly",
     "project_design_around",
     "reproduce_local_component_shape",
     "seal_design_around_request",

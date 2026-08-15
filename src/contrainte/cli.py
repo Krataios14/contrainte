@@ -13,6 +13,7 @@ from .canonical import dumps_pretty, loads_strict
 from .component_assembly import (
     compile_component_assembly,
     load_component_assembly,
+    prepare_component_assembly,
     verify_component_assembly_bundle,
 )
 from .errors import ContrainteError, InputError, IntegrityError
@@ -114,6 +115,29 @@ def _parser() -> argparse.ArgumentParser:
     )
     component_assembly_commands = component_assembly_parser.add_subparsers(
         dest="component_assembly_command", required=True
+    )
+    component_assembly_prepare = component_assembly_commands.add_parser(
+        "prepare",
+        help="bind current local releases into canonical digest-pinned inputs",
+    )
+    component_assembly_prepare.add_argument(
+        "interface_template",
+        help="source-root-relative interface-assembly template locator",
+    )
+    component_assembly_prepare.add_argument(
+        "assembly_template",
+        help="source-root-relative component-assembly template locator",
+    )
+    component_assembly_prepare.add_argument(
+        "--source-root",
+        required=True,
+        help="root containing templates and current local component releases",
+    )
+    component_assembly_prepare.add_argument(
+        "--output-dir",
+        "-o",
+        required=True,
+        help="directory beneath source-root for canonical prepared documents",
     )
     component_assembly_compile = component_assembly_commands.add_parser(
         "compile",
@@ -336,6 +360,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(json.dumps(verify_assembly_bundle(args.bundle), sort_keys=True))
                 return 0
         if args.command == "component-assembly":
+            if args.component_assembly_command == "prepare":
+                print(
+                    json.dumps(
+                        prepare_component_assembly(
+                            args.interface_template,
+                            args.assembly_template,
+                            args.source_root,
+                            args.output_dir,
+                        ),
+                        sort_keys=True,
+                    )
+                )
+                return 0
             if args.component_assembly_command == "compile":
                 bundle = compile_component_assembly(
                     load_component_assembly(args.input),
