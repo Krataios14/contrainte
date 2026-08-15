@@ -47,6 +47,21 @@ class ComponentReleaseTests(unittest.TestCase):
             "metadata": {"data_class": "synthetic"},
         }
 
+    def framed_request_document(self) -> dict:
+        document = self.request_document()
+        document["schema_version"] = "contrainte.component-release-request/0.2"
+        document["interfaces"][0]["frame"] = {
+            "reference": "engineering_bundle",
+            "unit": "mm",
+            "origin": {"x": "0", "y": "0", "z": "0"},
+            "basis": {
+                "x_axis": {"x": "1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "1"},
+            },
+        }
+        return document
+
     def test_release_request_rejects_promotion_fields(self) -> None:
         document = self.request_document()
         document["qualification"] = "engineering_reviewed"
@@ -181,13 +196,162 @@ class ComponentReleaseTests(unittest.TestCase):
                 )
 
     def test_manifest_json_remains_strictly_parseable(self) -> None:
-        request = ComponentReleaseRequest.from_dict(self.request_document())
+        document = self.request_document()
+        request = ComponentReleaseRequest.from_dict(document)
+        self.assertEqual(request.as_dict(), document)
         self.assertEqual(
             ComponentReleaseRequest.from_dict(
                 loads_strict(dumps_pretty(request.as_dict()))
             ),
             request,
         )
+
+    def test_release_request_versions_keep_interface_semantics_separate(self) -> None:
+        legacy = self.request_document()
+        legacy["interfaces"][0]["frame"] = self.framed_request_document()[
+            "interfaces"
+        ][0]["frame"]
+        with self.assertRaisesRegex(InputError, "unsupported fields"):
+            ComponentReleaseRequest.from_dict(legacy)
+
+        framed = self.framed_request_document()
+        del framed["interfaces"][0]["frame"]
+        with self.assertRaisesRegex(InputError, "frame is required"):
+            ComponentReleaseRequest.from_dict(framed)
+
+    def test_direct_framed_request_requires_frames(self) -> None:
+        legacy = ComponentReleaseRequest.from_dict(self.request_document())
+
+        with self.assertRaisesRegex(InputError, "requires every interface frame"):
+            ComponentReleaseRequest(
+                "contrainte.component-release-request/0.2",
+                legacy.component_id,
+                legacy.revision,
+                legacy.title,
+                legacy.interfaces,
+                legacy.capabilities,
+                legacy.metadata,
+            )
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_framed_request_derives_reproducible_component_v3(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            program = load_solid_program(SOLID_EXAMPLE)
+            compile_solid_program(program, root)
+            bundle_path = root / f"{program.part_id}.solid-bundle.json"
+            manifest = derive_component_manifest(
+                bundle_path,
+                ComponentReleaseRequest.from_dict(self.framed_request_document()),
+            )
+            manifest_path = root / "component.fixture.demo.json"
+            write_component_manifest(
+                manifest_path, manifest, bundle_path=bundle_path
+            )
+
+            report = verify_local_component_manifest(manifest_path)
+
+            self.assertEqual(report["status"], "verified")
+            self.assertEqual(
+                manifest.schema_version, "contrainte.component-manifest/0.3"
+            )
+            self.assertEqual(
+                manifest.metadata["derivation"], "verified_exact_bundle/0.2"
+            )
+            self.assertRegex(
+                manifest.metadata["component_release_request_content_digest"],
+                r"^sha256:[0-9a-f]{64}$",
+            )
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_framed_release_rejects_origin_outside_reproduced_bounds(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            program = load_solid_program(SOLID_EXAMPLE)
+            compile_solid_program(program, root)
+            bundle_path = root / f"{program.part_id}.solid-bundle.json"
+            document = self.framed_request_document()
+            document["interfaces"][0]["frame"]["origin"]["x"] = "50.000000001"
+
+            with self.assertRaisesRegex(InputError, "within or on geometry_bounds"):
+                derive_component_manifest(
+                    bundle_path, ComponentReleaseRequest.from_dict(document)
+                )
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_local_verifier_rejects_framed_interface_tampering(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            program = load_solid_program(SOLID_EXAMPLE)
+            compile_solid_program(program, root)
+            bundle_path = root / f"{program.part_id}.solid-bundle.json"
+            manifest = derive_component_manifest(
+                bundle_path,
+                ComponentReleaseRequest.from_dict(self.framed_request_document()),
+            )
+            manifest_path = root / "component.fixture.demo.json"
+            tampered = manifest.as_dict()
+            tampered["interfaces"][0]["frame"]["origin"]["x"] = "1"
+            manifest_path.write_text(
+                dumps_pretty(tampered), encoding="utf-8", newline="\n"
+            )
+
+            with self.assertRaisesRegex(
+                IntegrityError, "component_release_request_content_digest"
+            ):
+                verify_local_component_manifest(manifest_path)
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_local_verifier_reapplies_framed_request_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            program = load_solid_program(SOLID_EXAMPLE)
+            compile_solid_program(program, root)
+            bundle_path = root / f"{program.part_id}.solid-bundle.json"
+            document = self.framed_request_document()
+            document["capabilities"] = ["alpha", "zeta"]
+            manifest = derive_component_manifest(
+                bundle_path, ComponentReleaseRequest.from_dict(document)
+            )
+            manifest_path = root / "component.fixture.demo.json"
+            tampered = manifest.as_dict()
+            tampered["capabilities"] = ["zeta", "alpha"]
+            manifest_path.write_text(
+                dumps_pretty(tampered), encoding="utf-8", newline="\n"
+            )
+
+            with self.assertRaisesRegex(IntegrityError, "release request schema"):
+                verify_local_component_manifest(manifest_path)
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_framed_derivation_cannot_be_relabelled_without_rewrite(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            program = load_solid_program(SOLID_EXAMPLE)
+            compile_solid_program(program, root)
+            bundle_path = root / f"{program.part_id}.solid-bundle.json"
+            request_document = self.framed_request_document()
+            request_document["interfaces"] = []
+            manifest = derive_component_manifest(
+                bundle_path, ComponentReleaseRequest.from_dict(request_document)
+            )
+            manifest_path = root / "component.fixture.demo.json"
+            relabelled = manifest.as_dict()
+            relabelled["schema_version"] = "contrainte.component-manifest/0.2"
+            manifest_path.write_text(
+                dumps_pretty(relabelled), encoding="utf-8", newline="\n"
+            )
+
+            with self.assertRaisesRegex(IntegrityError, "derivation"):
+                verify_local_component_manifest(manifest_path)
+
+    def test_legacy_request_keeps_preexisting_user_metadata_namespace(self) -> None:
+        document = self.request_document()
+        document["metadata"]["component_release_request_content_digest"] = "user-label"
+
+        request = ComponentReleaseRequest.from_dict(document)
+
+        self.assertEqual(request.as_dict(), document)
 
     @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
     def test_verified_sketch_bundle_derives_geometry_backed_component(self) -> None:
