@@ -13,9 +13,10 @@ from .assembly import (
     verify_assembly_bundle,
 )
 from .cad import CAD_BUNDLE_SCHEMA, PrismaticPart, build_part_shape, verify_cad_bundle
-from .canonical import decimal_text, dumps_pretty, loads_strict
+from .canonical import decimal_text, digest, dumps_pretty, loads_strict
 from .component import (
     COMPONENT_SCHEMA,
+    COMPONENT_SCHEMA_V3,
     ArtifactRef,
     ArtifactRole,
     ComponentInterface,
@@ -41,10 +42,15 @@ from .solid import (
 )
 
 RELEASE_REQUEST_SCHEMA = "contrainte.component-release-request/0.1"
-_RESERVED_METADATA = {
+RELEASE_REQUEST_SCHEMA_V2 = "contrainte.component-release-request/0.2"
+_LEGACY_RESERVED_METADATA = {
     "derivation",
     "engineering_bundle_schema",
     "engineering_bundle_content_digest",
+}
+_FRAMED_RESERVED_METADATA = {
+    *_LEGACY_RESERVED_METADATA,
+    "component_release_request_content_digest",
 }
 _ARTIFACT_ROLES = {
     "exact_geometry": ArtifactRole.EXACT_GEOMETRY,
@@ -73,6 +79,24 @@ class ComponentReleaseRequest:
     capabilities: tuple[str, ...]
     metadata: Mapping[str, str]
 
+    def __post_init__(self) -> None:
+        if self.schema_version not in {
+            RELEASE_REQUEST_SCHEMA,
+            RELEASE_REQUEST_SCHEMA_V2,
+        }:
+            raise InputError(
+                f"unsupported component release request schema: {self.schema_version!r}"
+            )
+        framed = tuple(interface.frame is not None for interface in self.interfaces)
+        if self.schema_version == RELEASE_REQUEST_SCHEMA and any(framed):
+            raise InputError(
+                "component release request schema 0.1 does not support interface frames"
+            )
+        if self.schema_version == RELEASE_REQUEST_SCHEMA_V2 and not all(framed):
+            raise InputError(
+                "component release request schema 0.2 requires every interface frame"
+            )
+
     @classmethod
     def from_dict(
         cls, raw: Any, *, field: str = "component_release_request"
@@ -92,13 +116,17 @@ class ComponentReleaseRequest:
         if unknown:
             raise InputError(f"{field} contains unsupported fields: {', '.join(unknown)}")
         schema = _string(raw, "schema_version", field)
-        if schema != RELEASE_REQUEST_SCHEMA:
+        if schema not in {RELEASE_REQUEST_SCHEMA, RELEASE_REQUEST_SCHEMA_V2}:
             raise InputError(f"unsupported component release request schema: {schema!r}")
         interfaces_raw = raw.get("interfaces", [])
         if not isinstance(interfaces_raw, list):
             raise InputError(f"{field}.interfaces must be a list")
         interfaces = tuple(
-            ComponentInterface.from_dict(item, field=f"{field}.interfaces[{index}]")
+            ComponentInterface.from_dict(
+                item,
+                field=f"{field}.interfaces[{index}]",
+                frame_required=schema == RELEASE_REQUEST_SCHEMA_V2,
+            )
             for index, item in enumerate(interfaces_raw)
         )
         interface_ids = [item.interface_id for item in interfaces]
@@ -123,7 +151,12 @@ class ComponentReleaseRequest:
             for key, value in metadata_raw.items()
         ):
             raise InputError(f"{field}.metadata must map non-empty strings")
-        reserved = sorted(set(metadata_raw) & _RESERVED_METADATA)
+        reserved_names = (
+            _FRAMED_RESERVED_METADATA
+            if schema == RELEASE_REQUEST_SCHEMA_V2
+            else _LEGACY_RESERVED_METADATA
+        )
+        reserved = sorted(set(metadata_raw) & reserved_names)
         if reserved:
             raise InputError(
                 f"{field}.metadata uses reserved keys: {', '.join(reserved)}"
@@ -165,16 +198,25 @@ def derive_component_manifest(
     document, schema, artifacts = _verified_bundle_artifacts(source)
     geometry_bounds = _exact_geometry_bounds(document, schema)
     metadata = dict(request.metadata)
+    framed_release = request.schema_version == RELEASE_REQUEST_SCHEMA_V2
     metadata.update(
         {
-            "derivation": "verified_exact_bundle/0.1",
+            "derivation": (
+                "verified_exact_bundle/0.2"
+                if framed_release
+                else "verified_exact_bundle/0.1"
+            ),
             "engineering_bundle_schema": schema,
             "engineering_bundle_content_digest": document["digest"],
         }
     )
+    if framed_release:
+        metadata["component_release_request_content_digest"] = digest(
+            request.as_dict()
+        )
     return ComponentManifest.from_dict(
         {
-            "schema_version": COMPONENT_SCHEMA,
+            "schema_version": COMPONENT_SCHEMA_V3 if framed_release else COMPONENT_SCHEMA,
             "component_id": request.component_id,
             "revision": request.revision,
             "title": request.title,
@@ -247,10 +289,47 @@ def verify_local_component_manifest(manifest_path: str | Path) -> dict[str, str]
         if not local_path.is_file() or file_digest(local_path) != artifact.digest:
             raise IntegrityError(f"component artifact does not reproduce: {locator}")
     expected_metadata = {
-        "derivation": "verified_exact_bundle/0.1",
+        "derivation": (
+            "verified_exact_bundle/0.2"
+            if manifest.schema_version == COMPONENT_SCHEMA_V3
+            else "verified_exact_bundle/0.1"
+        ),
         "engineering_bundle_schema": schema,
         "engineering_bundle_content_digest": document["digest"],
     }
+    if manifest.schema_version == COMPONENT_SCHEMA_V3:
+        request_document = {
+            "schema_version": RELEASE_REQUEST_SCHEMA_V2,
+            "component_id": manifest.component_id,
+            "revision": manifest.revision,
+            "title": manifest.title,
+            "interfaces": [item.as_dict() for item in manifest.interfaces],
+            "capabilities": list(manifest.capabilities),
+            "metadata": {
+                key: value
+                for key, value in manifest.metadata.items()
+                if key not in _FRAMED_RESERVED_METADATA
+            },
+        }
+        try:
+            reproduced_request = ComponentReleaseRequest.from_dict(request_document)
+        except InputError as exc:
+            raise IntegrityError(
+                "component fields no longer satisfy the framed release request schema"
+            ) from exc
+        expected_metadata["component_release_request_content_digest"] = digest(
+            reproduced_request.as_dict()
+        )
+    reserved_names = (
+        _FRAMED_RESERVED_METADATA
+        if manifest.schema_version == COMPONENT_SCHEMA_V3
+        else _LEGACY_RESERVED_METADATA
+    )
+    actual_system_metadata = set(manifest.metadata) & reserved_names
+    if actual_system_metadata != set(expected_metadata):
+        raise IntegrityError(
+            "component derivation system metadata does not match its schema"
+        )
     for key, value in expected_metadata.items():
         if manifest.metadata.get(key) != value:
             raise IntegrityError(f"component derivation metadata mismatch: {key}")
