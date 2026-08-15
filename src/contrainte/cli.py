@@ -444,6 +444,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                         {
                             "status": result.status.value,
                             "examined_candidates": result.examined_candidates,
+                            **(
+                                {
+                                    "assembly_digest": result.assembly_digest,
+                                    "participant_evidence": [
+                                        item.as_dict()
+                                        for item in result.participant_evidence
+                                    ],
+                                    "release_eligible": result.release_eligible,
+                                }
+                                if result.release_eligible is not None
+                                else {}
+                            ),
                         },
                         sort_keys=True,
                     )
@@ -457,7 +469,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise IntegrityError(
                         "interface assembly result cannot be reproduced"
                     )
-                print(json.dumps({"status": "verified"}, sort_keys=True))
+                print(
+                    json.dumps(
+                        {
+                            "status": "verified",
+                            **(
+                                {
+                                    "assembly_digest": result.assembly_digest,
+                                    "participant_evidence": [
+                                        item.as_dict()
+                                        for item in result.participant_evidence
+                                    ],
+                                    "release_eligible": result.release_eligible,
+                                }
+                                if result.release_eligible is not None
+                                else {}
+                            ),
+                        },
+                        sort_keys=True,
+                    )
+                )
                 return 0
         if args.command == "reference-component":
             if args.reference_component_command == "seal":
