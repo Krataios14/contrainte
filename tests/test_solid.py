@@ -170,6 +170,82 @@ class SolidProgramTests(unittest.TestCase):
         )
 
     @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_sphere_intersection_operation_is_executable(self) -> None:
+        document = self.document()
+        document["nodes"] = [
+            {
+                "node_id": "box",
+                "operation": "box",
+                "inputs": [],
+                "parameters": {
+                    "x": length("10"),
+                    "y": length("10"),
+                    "z": length("10"),
+                },
+                "transform": transform(),
+            },
+            {
+                "node_id": "sphere",
+                "operation": "sphere",
+                "inputs": [],
+                "parameters": {"radius": length("10")},
+                "transform": transform(),
+            },
+            {
+                "node_id": "root",
+                "operation": "intersection",
+                "inputs": ["box", "sphere"],
+                "parameters": {},
+                "transform": transform(),
+            },
+        ]
+        program = SolidProgram.from_dict(document)
+
+        analysis, _ = analyze_solid_program(program)
+        self.assertEqual(analysis["status"], "passed")
+        self.assertEqual(analysis["node_results"][-1]["operation"], "intersection")
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_disconnected_output_is_rejected(self) -> None:
+        document = self.document()
+        document["nodes"] = [
+            {
+                "node_id": "left",
+                "operation": "box",
+                "inputs": [],
+                "parameters": {
+                    "x": length("10"),
+                    "y": length("10"),
+                    "z": length("10"),
+                },
+                "transform": transform(x="-20"),
+            },
+            {
+                "node_id": "right",
+                "operation": "box",
+                "inputs": [],
+                "parameters": {
+                    "x": length("10"),
+                    "y": length("10"),
+                    "z": length("10"),
+                },
+                "transform": transform(x="20"),
+            },
+            {
+                "node_id": "root",
+                "operation": "union",
+                "inputs": ["left", "right"],
+                "parameters": {},
+                "transform": transform(),
+            },
+        ]
+        program = SolidProgram.from_dict(document)
+
+        analysis, _ = analyze_solid_program(program)
+        self.assertEqual(analysis["status"], "failed")
+        self.assertIn("exactly one", analysis["failures"][0])
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
     def test_mass_limit_prevents_export(self) -> None:
         document = copy.deepcopy(self.document())
         document["limits"]["maximum_mass"]["value"] = "0.1"
