@@ -9,6 +9,14 @@ from .component import (
     ComponentManifest,
     ExactInterfaceFrame,
 )
+from .component_assembly import (
+    ComponentAssembly,
+    ComponentBinding,
+    ComponentPairClearance,
+    SourceFileRef,
+    compile_component_assembly,
+    verify_component_assembly_bundle,
+)
 from .exact_transform import ExactRigidTransform, ExactRotation3, ExactVector3
 from .interface_assembly import (
     InconclusiveReason,
@@ -37,7 +45,11 @@ from .reference_component import (
     seal_reference_component,
     verify_design_around_projection,
 )
-from .release import ComponentReleaseRequest, derive_component_manifest
+from .release import (
+    ComponentReleaseRequest,
+    derive_component_manifest,
+    reproduce_local_component_shape,
+)
 from .sketch import (
     CircularHole,
     SketchConstraint,
@@ -57,8 +69,11 @@ __all__ = [
     "AxialCase",
     "AxialResult",
     "CircularHole",
+    "ComponentAssembly",
+    "ComponentBinding",
     "ComponentInterface",
     "ComponentManifest",
+    "ComponentPairClearance",
     "ComponentReleaseRequest",
     "DesignAroundProjection",
     "DesignAroundRequest",
@@ -91,12 +106,15 @@ __all__ = [
     "SolidProgram",
     "SolveStatus",
     "SolvedOccurrence",
+    "SourceFileRef",
     "ThroughHole",
     "compile_bundle",
+    "compile_component_assembly",
     "compile_part",
     "compile_sketch_extrusion",
     "derive_component_manifest",
     "project_design_around",
+    "reproduce_local_component_shape",
     "seal_design_around_request",
     "seal_reference_component",
     "solve_axial_case",
@@ -104,6 +122,7 @@ __all__ = [
     "solve_interface_assembly",
     "verify_bundle",
     "verify_cad_bundle",
+    "verify_component_assembly_bundle",
     "verify_design_around_projection",
     "verify_interface_assembly_result",
     "verify_interface_assembly_solution",

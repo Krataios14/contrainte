@@ -10,6 +10,11 @@ from .agents import provider_inventory
 from .assembly import compile_assembly, load_assembly, verify_assembly_bundle
 from .cad import compile_part, load_part, verify_cad_bundle
 from .canonical import dumps_pretty, loads_strict
+from .component_assembly import (
+    compile_component_assembly,
+    load_component_assembly,
+    verify_component_assembly_bundle,
+)
 from .errors import ContrainteError, InputError, IntegrityError
 from .interface_assembly import (
     InterfaceAssembly,
@@ -102,6 +107,40 @@ def _parser() -> argparse.ArgumentParser:
         "verify", help="reproduce assembly analysis and verify exact artifacts"
     )
     assembly_verify.add_argument("bundle", help="path to an assembly bundle JSON file")
+
+    component_assembly_parser = subcommands.add_parser(
+        "component-assembly",
+        help="compile exact interface solutions into verified component geometry",
+    )
+    component_assembly_commands = component_assembly_parser.add_subparsers(
+        dest="component_assembly_command", required=True
+    )
+    component_assembly_compile = component_assembly_commands.add_parser(
+        "compile",
+        help="replay local component releases and reject interference or low clearance",
+    )
+    component_assembly_compile.add_argument(
+        "input", help="path to a component-assembly JSON file"
+    )
+    component_assembly_compile.add_argument(
+        "--source-root",
+        required=True,
+        help="root containing every digest-bound input locator",
+    )
+    component_assembly_compile.add_argument(
+        "--output-dir", "-o", required=True, help="directory for generated artifacts"
+    )
+    component_assembly_verify = component_assembly_commands.add_parser(
+        "verify", help="independently replay a component-assembly bundle"
+    )
+    component_assembly_verify.add_argument(
+        "bundle", help="path to a component-assembly bundle JSON file"
+    )
+    component_assembly_verify.add_argument(
+        "--source-root",
+        required=True,
+        help="root containing every digest-bound input locator",
+    )
 
     solid_parser = subcommands.add_parser(
         "solid", help="compile and verify general exact-solid feature programs"
@@ -295,6 +334,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if args.assembly_command == "verify":
                 print(json.dumps(verify_assembly_bundle(args.bundle), sort_keys=True))
+                return 0
+        if args.command == "component-assembly":
+            if args.component_assembly_command == "compile":
+                bundle = compile_component_assembly(
+                    load_component_assembly(args.input),
+                    args.source_root,
+                    args.output_dir,
+                )
+                print(bundle["digest"])
+                return 0
+            if args.component_assembly_command == "verify":
+                print(
+                    json.dumps(
+                        verify_component_assembly_bundle(args.bundle, args.source_root),
+                        sort_keys=True,
+                    )
+                )
                 return 0
         if args.command == "solid":
             if args.solid_command == "compile":
