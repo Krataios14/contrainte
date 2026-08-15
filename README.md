@@ -22,6 +22,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
 - Exact rigid assemblies with exhaustive pairwise interference and minimum-clearance checks, reproducible STEP/STL exports, and independently reproducible analysis.
 - General exact-solid feature DAGs with boxes, cylinders, spheres, rigid transforms, boolean construction, graph validation, feature-size rules, and mass/envelope limits.
+- Fully constrained straight-line sketches solved with exact rational arithmetic, strict polygon and hole topology, and evidence-backed Open CASCADE extrusion.
 - Strict design-program DAGs with declared work products, execution authority, acceptance criteria, and human gates.
 - Content-addressed resumable workspaces that detect state or object tampering.
 - Isolated subscription-CLI adapters for Codex, Claude, or two independent candidates.
@@ -63,6 +64,15 @@ python -m contrainte solid compile examples/pedestal-bracket.json --output-dir a
 python -m contrainte solid verify artifacts/pedestal-bracket/bracket.demo.solid-bundle.json
 ```
 
+Solve a constrained polygon profile, compile its exact-kernel extrusion, and reproduce its evidence:
+
+```powershell
+python -m contrainte sketch compile examples/constrained-pocket-plate.json --output-dir artifacts/constrained-pocket-plate
+python -m contrainte sketch verify artifacts/constrained-pocket-plate/plate.sketch.demo.sketch-bundle.json
+```
+
+Verified sketch bundles use the same component-release boundary as prismatic, solid-program, and assembly bundles. Derivation preserves the exact geometry, drawing, mesh, source-bundle identity, and explicit unqualified status rather than treating the sketch as an informal precursor.
+
 Derive an explicitly unqualified component manifest that pins the exact bundle and every local artifact, then verify the complete chain:
 
 ```powershell
@@ -82,11 +92,12 @@ Both examples use synthetic data and are explicitly unsuitable for engineering r
 
 ## Near-term development sequence
 
-The current CAD slice proves the authority chain on rectangular milled parts, strict exact-solid boolean programs, and exact rigid assemblies. It is not yet a full mechanical feature modeller. The next geometry gates are sketch constraint solving, persistent semantic topology, tolerance analysis, drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
+The current CAD slice proves the authority chain on rectangular milled parts, straight-line constrained sketch extrusions, strict exact-solid boolean programs, and exact rigid assemblies. It is not yet a full mechanical feature modeller. The next geometry gates are richer sketch geometry and constraints, persistent semantic topology, tolerance analysis, drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
 
 The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
 The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
 The [solid-program contract](docs/SOLID_PROGRAMS.md) defines the exact feature DAG, deterministic boolean semantics, enforced limits, and deliberate topology boundary.
+The [sketch-extrusion contract](docs/SKETCHES.md) defines exact linear constraint solving, profile topology, kernel cross-checks, and deliberate geometric limits.
 
 ## Repository policy
 
