@@ -30,6 +30,10 @@ jobs:
         run: |
           python -m contrainte assembly compile examples/plate-pair-assembly.json --output-dir artifacts/plate-pair
           python -m contrainte assembly verify artifacts/plate-pair/assembly.plate-pair.assembly-bundle.json
+      - name: Exercise exact interface design-around CLI
+        run: |
+          python -m contrainte interface-assembly solve examples/motor-design-around-interface.json --output artifacts/motor-design-around.result.json
+          python -m contrainte interface-assembly verify examples/motor-design-around-interface.json artifacts/motor-design-around.result.json
       - name: Exercise exact solid CLI
         run: |
           python -m contrainte solid compile examples/pedestal-bracket.json --output-dir artifacts/pedestal-bracket
