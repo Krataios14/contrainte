@@ -10,6 +10,21 @@ from .component import (
     ExactInterfaceFrame,
 )
 from .exact_transform import ExactRigidTransform, ExactRotation3, ExactVector3
+from .interface_assembly import (
+    InconclusiveReason,
+    InterfaceAssembly,
+    InterfaceAssemblyResult,
+    InterfaceEndpoint,
+    InterfaceMate,
+    InterfaceOccurrence,
+    MateAlternative,
+    SelectedMateAlternative,
+    SolvedOccurrence,
+    SolveStatus,
+    solve_interface_assembly,
+    verify_interface_assembly_result,
+    verify_interface_assembly_solution,
+)
 from .materials import MaterialRecord
 from .pipeline import compile_bundle, verify_bundle
 from .program import DesignProgram, DesignTask, GoalContract
@@ -44,16 +59,26 @@ __all__ = [
     "ExactRotation3",
     "ExactVector3",
     "GoalContract",
+    "InconclusiveReason",
+    "InterfaceAssembly",
+    "InterfaceAssemblyResult",
+    "InterfaceEndpoint",
+    "InterfaceMate",
+    "InterfaceOccurrence",
+    "MateAlternative",
     "MaterialRecord",
     "ObjectRef",
     "PartOccurrence",
     "PrismaticPart",
     "RigidTransform",
+    "SelectedMateAlternative",
     "SketchConstraint",
     "SketchExtrusion",
     "SketchPoint",
     "SketchProfile",
     "SolidProgram",
+    "SolveStatus",
+    "SolvedOccurrence",
     "ThroughHole",
     "compile_bundle",
     "compile_part",
@@ -61,8 +86,11 @@ __all__ = [
     "derive_component_manifest",
     "solve_axial_case",
     "solve_constraints",
+    "solve_interface_assembly",
     "verify_bundle",
     "verify_cad_bundle",
+    "verify_interface_assembly_result",
+    "verify_interface_assembly_solution",
     "verify_sketch_bundle",
 ]
 

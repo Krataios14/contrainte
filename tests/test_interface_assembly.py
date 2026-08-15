@@ -8,6 +8,7 @@ from fractions import Fraction
 from types import MappingProxyType
 from unittest.mock import patch
 
+import contrainte
 from contrainte.errors import InputError
 from contrainte.exact_transform import ExactRigidTransform
 from contrainte.interface_assembly import (
@@ -225,6 +226,15 @@ def cyclic_document(
 
 
 class InterfaceAssemblyTests(unittest.TestCase):
+    def test_public_api_exports_interface_solver(self) -> None:
+        self.assertIs(contrainte.InterfaceAssembly, InterfaceAssembly)
+        self.assertIs(contrainte.InterfaceAssemblyResult, InterfaceAssemblyResult)
+        self.assertIs(contrainte.solve_interface_assembly, solve_interface_assembly)
+        self.assertIs(
+            contrainte.verify_interface_assembly_result,
+            verify_interface_assembly_result,
+        )
+
     def test_two_occurrence_formula_is_exact(self) -> None:
         document = assembly(
             [
