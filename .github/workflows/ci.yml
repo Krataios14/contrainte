@@ -36,6 +36,8 @@ jobs:
           python -m contrainte solid verify artifacts/pedestal-bracket/bracket.demo.solid-bundle.json
           python -m contrainte component derive artifacts/pedestal-bracket/bracket.demo.solid-bundle.json examples/pedestal-component.json --output artifacts/pedestal-bracket/component.fixture.demo.json
           python -m contrainte component verify artifacts/pedestal-bracket/component.fixture.demo.json
+          python -m contrainte component derive artifacts/pedestal-bracket/bracket.demo.solid-bundle.json examples/pedestal-component-framed.json --output artifacts/pedestal-bracket/component.fixture.framed-demo.json
+          python -m contrainte component verify artifacts/pedestal-bracket/component.fixture.framed-demo.json
       - name: Exercise constrained sketch CLI
         run: |
           python -m contrainte sketch compile examples/constrained-pocket-plate.json --output-dir artifacts/constrained-pocket-plate
