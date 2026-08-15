@@ -1,5 +1,6 @@
 """Contrainte's evidence-first deterministic engineering core."""
 
+from .assembly import Assembly, PartOccurrence, RigidTransform
 from .axial import AxialCase, AxialResult, solve_axial_case
 from .cad import PrismaticPart, ThroughHole, compile_part, verify_cad_bundle
 from .component import ArtifactRef, ComponentInterface, ComponentManifest
@@ -10,6 +11,7 @@ from .workspace import DesignWorkspace, ObjectRef
 
 __all__ = [
     "ArtifactRef",
+    "Assembly",
     "AxialCase",
     "AxialResult",
     "ComponentInterface",
@@ -20,7 +22,9 @@ __all__ = [
     "GoalContract",
     "MaterialRecord",
     "ObjectRef",
+    "PartOccurrence",
     "PrismaticPart",
+    "RigidTransform",
     "ThroughHole",
     "compile_bundle",
     "compile_part",

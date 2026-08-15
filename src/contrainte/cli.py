@@ -6,6 +6,7 @@ import sys
 from collections.abc import Sequence
 
 from .agents import provider_inventory
+from .assembly import compile_assembly, load_assembly, verify_assembly_bundle
 from .cad import compile_part, load_part, verify_cad_bundle
 from .canonical import dumps_pretty
 from .errors import ContrainteError
@@ -55,6 +56,24 @@ def _parser() -> argparse.ArgumentParser:
         "verify", help="verify a CAD bundle and every referenced artifact"
     )
     cad_verify.add_argument("bundle", help="path to a CAD bundle JSON file")
+
+    assembly_parser = subcommands.add_parser(
+        "assembly", help="compile and verify exact multi-part assemblies"
+    )
+    assembly_commands = assembly_parser.add_subparsers(
+        dest="assembly_command", required=True
+    )
+    assembly_compile = assembly_commands.add_parser(
+        "compile", help="compile an assembly and reject interference or low clearance"
+    )
+    assembly_compile.add_argument("input", help="path to an assembly JSON file")
+    assembly_compile.add_argument(
+        "--output-dir", "-o", required=True, help="directory for generated artifacts"
+    )
+    assembly_verify = assembly_commands.add_parser(
+        "verify", help="reproduce assembly analysis and verify exact artifacts"
+    )
+    assembly_verify.add_argument("bundle", help="path to an assembly bundle JSON file")
 
     program_parser = subcommands.add_parser(
         "program", help="inspect deterministic design-program graphs"
@@ -130,6 +149,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if args.cad_command == "verify":
                 print(json.dumps(verify_cad_bundle(args.bundle), sort_keys=True))
+                return 0
+        if args.command == "assembly":
+            if args.assembly_command == "compile":
+                bundle = compile_assembly(load_assembly(args.input), args.output_dir)
+                print(bundle["digest"])
+                return 0
+            if args.assembly_command == "verify":
+                print(json.dumps(verify_assembly_bundle(args.bundle), sort_keys=True))
                 return 0
         if args.command == "program":
             program = load_program(args.input)
