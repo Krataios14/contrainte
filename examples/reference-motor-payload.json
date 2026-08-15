@@ -1,0 +1,147 @@
+{
+  "allowed_operations": [
+    "attach_at_declared_interface",
+    "rigid_placement"
+  ],
+  "component_id": "motor-001",
+  "envelopes": [
+    {
+      "bounds": {
+        "maximum": {"x": "75", "y": "75", "z": "150"},
+        "minimum": {"x": "-75", "y": "-75", "z": "-125"},
+        "unit": "mm"
+      },
+      "envelope_id": "service-zone",
+      "evidence_id": "drawing",
+      "purpose": "service"
+    }
+  ],
+  "evidence": [
+    {
+      "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "authority": "documented_source",
+      "evidence_id": "drawing",
+      "kind": "manufacturer_drawing",
+      "locator": "vendor://EM-42/rev-C/drawing",
+      "supports": [
+        "/envelopes/service-zone",
+        "/identity",
+        "/occupied_bounds",
+        "/reference_frames/mount",
+        "/revision"
+      ]
+    },
+    {
+      "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "authority": "informative",
+      "evidence_id": "legal-review",
+      "kind": "declaration",
+      "locator": "project://review/example-only",
+      "supports": ["/evidence_gates"]
+    },
+    {
+      "artifact_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "authority": "informative",
+      "evidence_id": "mass-test",
+      "kind": "test_report",
+      "locator": "lab://mass/example-only",
+      "supports": ["/mass_properties"]
+    }
+  ],
+  "evidence_gates": [
+    {
+      "disposition": "accepted_for_project",
+      "evidence_ids": ["legal-review"],
+      "name": "authenticity",
+      "rationale": "Synthetic project review; not a legal conclusion."
+    },
+    {
+      "disposition": "accepted_for_project",
+      "evidence_ids": ["legal-review"],
+      "name": "rights_to_use",
+      "rationale": "Synthetic project review; not a legal conclusion."
+    },
+    {
+      "disposition": "accepted_for_project",
+      "evidence_ids": ["legal-review"],
+      "name": "rights_to_modify",
+      "rationale": "Synthetic project review; not a legal conclusion."
+    },
+    {
+      "disposition": "accepted_for_project",
+      "evidence_ids": ["legal-review"],
+      "name": "freedom_to_operate",
+      "rationale": "Synthetic project review; not a legal conclusion."
+    },
+    {
+      "disposition": "accepted_for_project",
+      "evidence_ids": ["legal-review"],
+      "name": "export_control",
+      "rationale": "Synthetic project review; not a legal conclusion."
+    }
+  ],
+  "known_fields": [
+    {
+      "evidence_id": "drawing",
+      "field_path": "/revision"
+    }
+  ],
+  "legal_gate_disclaimer": "Project workflow dispositions only; not legal determinations or advice.",
+  "manufacturer": "Example Motors",
+  "mass_properties": {
+    "center_of_mass": {"x": "0", "y": "0", "z": "5"},
+    "evidence_id": "mass-test",
+    "inertia_kg_mm2": {
+      "ixx": "1000",
+      "ixy": "0",
+      "ixz": "0",
+      "iyy": "1000",
+      "iyz": "0",
+      "izz": "500"
+    },
+    "inertia_reference": "center_of_mass",
+    "mass_kg": "18"
+  },
+  "occupied_bounds": {
+    "maximum": {"x": "50", "y": "50", "z": "100"},
+    "minimum": {"x": "-50", "y": "-50", "z": "-100"},
+    "unit": "mm"
+  },
+  "occupied_bounds_evidence_id": "drawing",
+  "part_number": "EM-42",
+  "reference_frames": [
+    {
+      "evidence_id": "drawing",
+      "frame_id": "mount",
+      "interface": {
+        "direction": "bidirectional",
+        "kind": "mechanical",
+        "medium": "bolted-flange",
+        "properties": {"bolt-pattern": "4xM8-PCD100"}
+      },
+      "role": "interface",
+      "transform": {
+        "basis": {
+          "x_axis": {"x": "1", "y": "0", "z": "0"},
+          "y_axis": {"x": "0", "y": "1", "z": "0"},
+          "z_axis": {"x": "0", "y": "0", "z": "1"}
+        },
+        "schema_version": "contrainte.exact-rigid-transform/0.1",
+        "translation": {"x": "0", "y": "0", "z": "0"},
+        "unit": "mm"
+      }
+    }
+  ],
+  "revision": "C",
+  "schema_version": "contrainte.reference-component/0.1",
+  "source_model_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "title": "Synthetic fixed traction motor",
+  "unit": "mm",
+  "unknown_fields": [
+    {
+      "consequence": "Do not release transmission or inverter sizing.",
+      "field_path": "/performance/torque_curve",
+      "required_evidence": "Authenticated torque-speed and derating map."
+    }
+  ]
+}

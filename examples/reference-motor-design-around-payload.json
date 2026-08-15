@@ -1,0 +1,18 @@
+{
+  "clearances": [
+    {
+      "clearance_mm": "5",
+      "envelope_id": "service-zone"
+    }
+  ],
+  "flexible_domains": [
+    "cooling",
+    "mounting",
+    "transmission"
+  ],
+  "occurrence_id": "traction-motor",
+  "reference_component_digest": "sha256:308f13c806ebb6b46dd749543b0c9705106b0bf25333f0bccb9ea4f1645e657c",
+  "request_id": "motor-installation",
+  "required_interface_ids": ["mount"],
+  "schema_version": "contrainte.design-around-request/0.1"
+}
