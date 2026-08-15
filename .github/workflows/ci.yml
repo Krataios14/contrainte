@@ -34,6 +34,12 @@ jobs:
         run: |
           python -m contrainte interface-assembly solve examples/motor-design-around-interface.json --output artifacts/motor-design-around.result.json
           python -m contrainte interface-assembly verify examples/motor-design-around-interface.json artifacts/motor-design-around.result.json
+      - name: Exercise protected reference-component projection
+        run: |
+          python -m contrainte reference-component seal examples/reference-motor-payload.json --output artifacts/reference-motor.json
+          python -m contrainte reference-component seal-request examples/reference-motor-design-around-payload.json --output artifacts/reference-motor.request.json
+          python -m contrainte reference-component project artifacts/reference-motor.json artifacts/reference-motor.request.json --output artifacts/reference-motor.projection.json
+          python -m contrainte reference-component verify artifacts/reference-motor.json artifacts/reference-motor.request.json artifacts/reference-motor.projection.json
       - name: Exercise exact solid CLI
         run: |
           python -m contrainte solid compile examples/pedestal-bracket.json --output-dir artifacts/pedestal-bracket
