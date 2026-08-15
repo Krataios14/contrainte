@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import itertools
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, localcontext
+from pathlib import Path
 from typing import Any
 
 from .canonical import decimal_text
@@ -85,3 +88,24 @@ def kernel_measurement(value: Any) -> Decimal:
     with localcontext() as context:
         context.prec = 50
         return measurement.quantize(KERNEL_REPORT_QUANTUM)
+
+
+def normalize_step_occurrence_identifiers(path: Path) -> None:
+    """Remove Open CASCADE's process-global STEP occurrence counter."""
+
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ExecutionError(f"cannot read exported STEP file: {exc}") from exc
+    counter = itertools.count(1)
+    normalized, replacements = re.subn(
+        r"(NEXT_ASSEMBLY_USAGE_OCCURRENCE\()'[^']*'",
+        lambda match: f"{match.group(1)}'{next(counter)}'",
+        source,
+    )
+    if replacements == 0 and "NEXT_ASSEMBLY_USAGE_OCCURRENCE" in source:
+        raise ExecutionError("cannot normalize STEP assembly occurrence identifiers")
+    try:
+        path.write_text(normalized, encoding="utf-8", newline="\n")
+    except OSError as exc:
+        raise ExecutionError(f"cannot normalize exported STEP file: {exc}") from exc

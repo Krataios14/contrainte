@@ -13,7 +13,11 @@ from typing import Any
 from .cad import PrismaticPart, build_part_shape
 from .canonical import decimal_text, digest, dumps_pretty, loads_strict
 from .errors import ExecutionError, InputError, IntegrityError
-from .geometry import RigidTransform, kernel_measurement
+from .geometry import (
+    RigidTransform,
+    kernel_measurement,
+    normalize_step_occurrence_identifiers,
+)
 from .units import Quantity
 
 ASSEMBLY_SCHEMA = "contrainte.assembly/0.1"
@@ -372,7 +376,7 @@ def compile_assembly(
     stl_path = destination / f"{assembly.assembly_id}.stl"
     if not export_step(compound, step_path, timestamp="2000-01-01T00:00:00"):
         raise ExecutionError("Open CASCADE failed to export the assembly STEP file")
-    _normalize_step_occurrence_identifiers(step_path)
+    normalize_step_occurrence_identifiers(step_path)
     if not export_stl(compound, stl_path, tolerance=0.01, angular_tolerance=0.1):
         raise ExecutionError("Open CASCADE failed to export the assembly STL file")
     artifacts = [
@@ -453,24 +457,3 @@ def _artifact(path: Path, media_type: str, role: str) -> dict[str, Any]:
         "digest": _file_digest(path),
         "size_bytes": path.stat().st_size,
     }
-
-
-def _normalize_step_occurrence_identifiers(path: Path) -> None:
-    """Remove Open CASCADE's process-global assembly occurrence counter."""
-
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise ExecutionError(f"cannot read exported STEP file: {exc}") from exc
-    counter = itertools.count(1)
-    normalized, replacements = re.subn(
-        r"(NEXT_ASSEMBLY_USAGE_OCCURRENCE\()'[^']*'",
-        lambda match: f"{match.group(1)}'{next(counter)}'",
-        source,
-    )
-    if replacements == 0 and "NEXT_ASSEMBLY_USAGE_OCCURRENCE" in source:
-        raise ExecutionError("cannot normalize STEP assembly occurrence identifiers")
-    try:
-        path.write_text(normalized, encoding="utf-8", newline="\n")
-    except OSError as exc:
-        raise ExecutionError(f"cannot normalize exported STEP file: {exc}") from exc
