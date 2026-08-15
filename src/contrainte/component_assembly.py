@@ -765,13 +765,25 @@ def _load_declared_artifacts(
         item = descriptors[name]
         if item["media_type"] != media_type or item["role"] != role:
             raise IntegrityError(f"bundle artifact contract mismatch: {name}")
+        artifact_path = directory / name
         try:
-            if (directory / name).lstat().st_size != item["size_bytes"]:
-                raise IntegrityError(f"bundle artifact size mismatch: {name}")
+            metadata = artifact_path.lstat()
         except FileNotFoundError as exc:
             raise IntegrityError(f"bundle artifact is missing: {name}") from exc
+        except OSError as exc:
+            raise IntegrityError(f"bundle artifact is unavailable: {name}") from exc
+        if stat.S_ISLNK(metadata.st_mode) or _is_link_or_reparse(artifact_path):
+            raise IntegrityError(
+                f"bundle artifact {name} cannot be a link or reparse point"
+            )
+        if not stat.S_ISREG(metadata.st_mode):
+            raise IntegrityError(f"bundle artifact {name} must be a regular file")
+        if metadata.st_nlink != 1:
+            raise IntegrityError(f"bundle artifact {name} cannot be hard-linked")
+        if metadata.st_size != item["size_bytes"]:
+            raise IntegrityError(f"bundle artifact size mismatch: {name}")
         value = _read_stable_file(
-            directory / name,
+            artifact_path,
             maximum_bytes=_MAX_OUTPUT_ARTIFACT_BYTES,
             field=f"bundle artifact {name}",
             expected_digest=item["digest"],
