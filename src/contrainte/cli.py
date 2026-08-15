@@ -25,6 +25,15 @@ from .pipeline import (
     write_bundle,
 )
 from .program import load_program
+from .reference_component import (
+    DesignAroundProjection,
+    DesignAroundRequest,
+    ReferenceComponentManifest,
+    project_design_around,
+    seal_design_around_request,
+    seal_reference_component,
+    verify_design_around_projection,
+)
 from .release import (
     derive_component_manifest,
     load_release_request,
@@ -167,6 +176,36 @@ def _parser() -> argparse.ArgumentParser:
         "input", help="path to the original interface-assembly JSON file"
     )
     interface_verify.add_argument("result", help="path to the result JSON file")
+
+    reference_parser = subcommands.add_parser(
+        "reference-component",
+        help="seal protected components and project design-around constraints",
+    )
+    reference_commands = reference_parser.add_subparsers(
+        dest="reference_component_command", required=True
+    )
+    reference_seal = reference_commands.add_parser(
+        "seal", help="validate and digest-seal a reference-component payload"
+    )
+    reference_seal.add_argument("input", help="unsealed reference-component JSON")
+    reference_seal.add_argument("--output", "-o", required=True)
+    request_seal = reference_commands.add_parser(
+        "seal-request", help="validate and digest-seal a design-around request"
+    )
+    request_seal.add_argument("input", help="unsealed design-around request JSON")
+    request_seal.add_argument("--output", "-o", required=True)
+    reference_project = reference_commands.add_parser(
+        "project", help="project protected and flexible design constraints"
+    )
+    reference_project.add_argument("component", help="sealed reference component")
+    reference_project.add_argument("request", help="sealed design-around request")
+    reference_project.add_argument("--output", "-o", required=True)
+    reference_verify = reference_commands.add_parser(
+        "verify", help="independently replay a design-around projection"
+    )
+    reference_verify.add_argument("component", help="sealed reference component")
+    reference_verify.add_argument("request", help="sealed design-around request")
+    reference_verify.add_argument("projection", help="design-around projection")
 
     program_parser = subcommands.add_parser(
         "program", help="inspect deterministic design-program graphs"
@@ -327,6 +366,63 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 print(json.dumps({"status": "verified"}, sort_keys=True))
                 return 0
+        if args.command == "reference-component":
+            if args.reference_component_command == "seal":
+                document = seal_reference_component(
+                    _read_json(args.input, label="reference component payload")
+                )
+                _write_json(args.output, document, label="reference component")
+                print(document["content_digest"])
+                return 0
+            if args.reference_component_command == "seal-request":
+                document = seal_design_around_request(
+                    _read_json(args.input, label="design-around request payload")
+                )
+                _write_json(args.output, document, label="design-around request")
+                print(document["content_digest"])
+                return 0
+            component = ReferenceComponentManifest.from_dict(
+                _read_json(args.component, label="reference component")
+            )
+            request = DesignAroundRequest.from_dict(
+                _read_json(args.request, label="design-around request")
+            )
+            if args.reference_component_command == "project":
+                projection = project_design_around(component, request)
+                _write_json(
+                    args.output,
+                    projection.as_dict(),
+                    label="design-around projection",
+                )
+                print(
+                    json.dumps(
+                        {
+                            "content_digest": projection.content_digest,
+                            "evidence_blockers": len(projection.evidence_blockers),
+                            "status": "projected",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0
+            if args.reference_component_command == "verify":
+                projection = DesignAroundProjection.from_dict(
+                    _read_json(args.projection, label="design-around projection")
+                )
+                if not verify_design_around_projection(component, request, projection):
+                    raise IntegrityError(
+                        "design-around projection cannot be reproduced"
+                    )
+                print(
+                    json.dumps(
+                        {
+                            "evidence_blockers": len(projection.evidence_blockers),
+                            "status": "verified",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0
         if args.command == "program":
             program = load_program(args.input)
             if args.program_command == "validate":
@@ -390,3 +486,11 @@ def _read_json(path: str, *, label: str) -> object:
         return loads_strict(source.read_bytes())
     except OSError as exc:
         raise InputError(f"cannot read {label} {source}: {exc}") from exc
+
+
+def _write_json(path: str, document: object, *, label: str) -> None:
+    destination = Path(path)
+    try:
+        destination.write_text(dumps_pretty(document), encoding="utf-8", newline="\n")
+    except OSError as exc:
+        raise InputError(f"cannot write {label} {destination}: {exc}") from exc

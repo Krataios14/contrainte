@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import copy
+import io
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from fractions import Fraction
+from pathlib import Path
 from unittest.mock import patch
 
 import contrainte
-from contrainte.canonical import digest
+from contrainte.canonical import digest, dumps_pretty, loads_strict
+from contrainte.cli import main as cli_main
 from contrainte.component import InterfaceDirection, InterfaceKind
 from contrainte.errors import InputError, IntegrityError
 from contrainte.exact_transform import ExactRigidTransform, ExactVector3
@@ -230,6 +235,104 @@ class ReferenceComponentTests(unittest.TestCase):
         self.assertEqual(manifest.unit, "mm")
         self.assertIs(type(manifest.occupied_bounds.minimum), ExactVector3)
         self.assertIs(type(manifest.reference_frames[0].transform), ExactRigidTransform)
+
+    def test_cli_seals_projects_and_replays_design_around(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload_path = root / "motor.payload.json"
+            component_path = root / "motor.reference.json"
+            request_payload_path = root / "request.payload.json"
+            request_path = root / "request.json"
+            projection_path = root / "projection.json"
+            payload_path.write_text(
+                dumps_pretty(base_payload()), encoding="utf-8", newline="\n"
+            )
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "reference-component",
+                            "seal",
+                            str(payload_path),
+                            "--output",
+                            str(component_path),
+                        ]
+                    ),
+                    0,
+                )
+            component = ReferenceComponentManifest.from_dict(
+                loads_strict(component_path.read_bytes())
+            )
+            request_payload_path.write_text(
+                dumps_pretty(request_payload(component.content_digest)),
+                encoding="utf-8",
+                newline="\n",
+            )
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "reference-component",
+                            "seal-request",
+                            str(request_payload_path),
+                            "--output",
+                            str(request_path),
+                        ]
+                    ),
+                    0,
+                )
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "reference-component",
+                            "project",
+                            str(component_path),
+                            str(request_path),
+                            "--output",
+                            str(projection_path),
+                        ]
+                    ),
+                    0,
+                )
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "reference-component",
+                            "verify",
+                            str(component_path),
+                            str(request_path),
+                            str(projection_path),
+                        ]
+                    ),
+                    0,
+                )
+            projection = loads_strict(projection_path.read_bytes())
+            projection["evidence_blockers"] = []
+            projection["content_digest"] = digest(
+                {
+                    key: value
+                    for key, value in projection.items()
+                    if key != "content_digest"
+                }
+            )
+            projection_path.write_text(
+                dumps_pretty(projection), encoding="utf-8", newline="\n"
+            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                self.assertEqual(
+                    cli_main(
+                        [
+                            "reference-component",
+                            "verify",
+                            str(component_path),
+                            str(request_path),
+                            str(projection_path),
+                        ]
+                    ),
+                    2,
+                )
+            self.assertIn("cannot be reproduced", stderr.getvalue())
 
     def test_projection_binds_fixed_component_and_flexible_domains(self) -> None:
         manifest = parsed_manifest()
