@@ -34,6 +34,15 @@ jobs:
         run: |
           python -m contrainte interface-assembly solve examples/motor-design-around-interface.json --output artifacts/motor-design-around.result.json
           python -m contrainte interface-assembly verify examples/motor-design-around-interface.json artifacts/motor-design-around.result.json
+      - name: Exercise geometry-backed component assembly
+        run: |
+          python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/component-pair-source
+          python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-left-release.json --output artifacts/component-pair-source/left.component.json
+          python -m contrainte component derive artifacts/component-pair-source/plate.demo.cad-bundle.json examples/component-pair-right-release.json --output artifacts/component-pair-source/right.component.json
+          python -m contrainte interface-assembly solve examples/component-pair-interface.json --output artifacts/component-pair-source/interface-result.json
+          cmp artifacts/component-pair-source/interface-result.json examples/component-pair-interface-result.json
+          python -m contrainte component-assembly compile examples/component-pair-assembly.json --source-root . --output-dir artifacts/component-pair-assembly
+          python -m contrainte component-assembly verify artifacts/component-pair-assembly/component-pair.component-assembly-bundle.json --source-root .
       - name: Exercise protected reference-component projection
         run: |
           python -m contrainte reference-component seal examples/reference-motor-payload.json --output artifacts/reference-motor.json
