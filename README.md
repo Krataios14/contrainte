@@ -25,6 +25,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Optional build123d/Open CASCADE compilation to exact STEP, STL, and SVG, followed by B-rep validity and independent volume checks.
 - Exact rigid assemblies with exhaustive pairwise interference and minimum-clearance checks, reproducible STEP/STL exports, and independently reproducible analysis.
 - Geometry-backed component assemblies that bind replayed exact interface solutions to verified local component releases, project rational poses directly into Open CASCADE matrices, and reject interference or insufficient clearance before deterministic export.
+- Conservative reference-spatial assemblies that place verified released B-reps around one protected existing component, replay occupied/keepout/access/service box evidence, and emit JSON-only non-release results.
 - General exact-solid feature DAGs with boxes, cylinders, spheres, rigid transforms, boolean construction, graph validation, feature-size rules, and mass/envelope limits.
 - Fully constrained sketches solved with exact rational arithmetic, strict polygon topology, exact-diameter circular through-holes, symbolic circular-area evidence, and evidence-backed Open CASCADE extrusion.
 - Strict design-program DAGs with declared work products, execution authority, acceptance criteria, and human gates.
@@ -126,7 +127,26 @@ constraint, authority, interface-evidence, and blocker summaries while fixing
 `release_eligible` to `false`; successful placement is not a release decision.
 Scan and Gaussian-splat
 authority remains observational. The current hybrid slice does not yet check its
-occupied, keepout, access, or service envelopes against surrounding B-reps.
+occupied, keepout, access, or service envelopes against surrounding B-reps; the
+separate conservative spatial-evidence command below performs that bounded check.
+
+Compile a released bracket around one protected existing traction motor, then
+independently replay the exact placement and nominal Open CASCADE spatial checks:
+
+```powershell
+python examples/build-reference-spatial-motor.py --output-dir artifacts/reference-spatial-motor
+python -m contrainte interface-assembly solve artifacts/reference-spatial-motor/existing-motor.interface.json --output artifacts/reference-spatial-motor/existing-motor.interface-result.json
+python -m contrainte interface-assembly verify artifacts/reference-spatial-motor/existing-motor.interface.json artifacts/reference-spatial-motor/existing-motor.interface-result.json
+python -m contrainte reference-spatial-assembly compile artifacts/reference-spatial-motor/existing-motor-spatial-assembly.json --source-root artifacts/reference-spatial-motor --output-dir artifacts/reference-spatial-motor/compiled
+python -m contrainte reference-spatial-assembly verify artifacts/reference-spatial-motor/compiled/existing-motor-bracket.reference-spatial-assembly-bundle.json --source-root artifacts/reference-spatial-motor
+```
+
+The protected motor contributes exact rational conservative boxes with pinned
+evidence, not a claimed B-rep. Only the bracket is reproduced from verified local
+STEP. Passing evidence is always JSON-only, `release_eligible=false`, and retains
+the protected source authority and unresolved evidence blockers. These nominal
+checks do not establish tolerance, motion, load, accessibility, service
+feasibility, or release authority.
 
 Compile a solved interface result against B-reps reproduced from actual local component releases:
 
@@ -178,6 +198,7 @@ The [exact-transform contract](docs/EXACT_TRANSFORMS.md) defines local-to-parent
 The [interface-assembly contract](docs/INTERFACE_ASSEMBLIES.md) defines exact mating equations, ranked bounded search, independent terminal replay, and design-around nonclaims.
 The [geometry-backed component-assembly contract](docs/COMPONENT_ASSEMBLIES.md) defines verified local-release binding, direct exact-matrix projection, nominal B-rep pair checks, and its deliberate evidence limits.
 The [reference-component contract](docs/REFERENCE_COMPONENTS.md) defines evidence ceilings, protected existing-part semantics, explicit flexible domains, and independently replayed design-around projections.
+The [reference-spatial-assembly contract](docs/REFERENCE_SPATIAL_ASSEMBLIES.md) defines JSON-only conservative protected-region checks against verified released B-reps and their non-release authority ceiling.
 The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
 The [solid-program contract](docs/SOLID_PROGRAMS.md) defines the exact feature DAG, deterministic boolean semantics, enforced limits, and deliberate topology boundary.
 The [sketch-extrusion contract](docs/SKETCHES.md) defines exact linear constraint solving, profile topology, kernel cross-checks, and deliberate geometric limits.
