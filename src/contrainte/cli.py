@@ -40,6 +40,10 @@ from .reference_component import (
     seal_reference_component,
     verify_design_around_projection,
 )
+from .reference_spatial_assembly import (
+    compile_reference_spatial_assembly_file,
+    verify_reference_spatial_assembly_bundle,
+)
 from .release import (
     derive_component_manifest,
     load_release_request,
@@ -161,6 +165,43 @@ def _parser() -> argparse.ArgumentParser:
         "bundle", help="path to a component-assembly bundle JSON file"
     )
     component_assembly_verify.add_argument(
+        "--source-root",
+        required=True,
+        help="root containing every digest-bound input locator",
+    )
+
+    reference_spatial_parser = subcommands.add_parser(
+        "reference-spatial-assembly",
+        help="compile and replay conservative spatial evidence around a protected reference",
+    )
+    reference_spatial_commands = reference_spatial_parser.add_subparsers(
+        dest="reference_spatial_assembly_command", required=True
+    )
+    reference_spatial_compile = reference_spatial_commands.add_parser(
+        "compile",
+        help="check released B-reps against protected conservative spatial regions",
+    )
+    reference_spatial_compile.add_argument(
+        "input", help="path to a reference-spatial-assembly JSON file"
+    )
+    reference_spatial_compile.add_argument(
+        "--source-root",
+        required=True,
+        help="root containing every digest-bound input locator",
+    )
+    reference_spatial_compile.add_argument(
+        "--output-dir",
+        "-o",
+        required=True,
+        help="directory for the JSON evidence bundle",
+    )
+    reference_spatial_verify = reference_spatial_commands.add_parser(
+        "verify", help="independently replay a reference-spatial-assembly bundle"
+    )
+    reference_spatial_verify.add_argument(
+        "bundle", help="path to a reference-spatial-assembly bundle JSON file"
+    )
+    reference_spatial_verify.add_argument(
         "--source-root",
         required=True,
         help="root containing every digest-bound input locator",
@@ -385,6 +426,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(
                     json.dumps(
                         verify_component_assembly_bundle(args.bundle, args.source_root),
+                        sort_keys=True,
+                    )
+                )
+                return 0
+        if args.command == "reference-spatial-assembly":
+            if args.reference_spatial_assembly_command == "compile":
+                bundle = compile_reference_spatial_assembly_file(
+                    args.input,
+                    args.source_root,
+                    args.output_dir,
+                )
+                print(bundle["digest"])
+                return 0
+            if args.reference_spatial_assembly_command == "verify":
+                print(
+                    json.dumps(
+                        verify_reference_spatial_assembly_bundle(
+                            args.bundle, args.source_root
+                        ),
                         sort_keys=True,
                     )
                 )

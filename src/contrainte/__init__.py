@@ -52,6 +52,13 @@ from .reference_component import (
     seal_reference_component,
     verify_design_around_projection,
 )
+from .reference_spatial_assembly import (
+    ProtectedReferenceBinding,
+    ReferenceSpatialAssembly,
+    compile_reference_spatial_assembly,
+    compile_reference_spatial_assembly_file,
+    verify_reference_spatial_assembly_bundle,
+)
 from .release import (
     ComponentReleaseRequest,
     derive_component_manifest,
@@ -107,8 +114,10 @@ __all__ = [
     "ParticipantEvidenceSummary",
     "ParticipantKind",
     "PrismaticPart",
+    "ProtectedReferenceBinding",
     "ProtectedReferenceParticipant",
     "ReferenceComponentManifest",
+    "ReferenceSpatialAssembly",
     "ReleasedComponentParticipant",
     "RigidTransform",
     "SelectedMateAlternative",
@@ -124,6 +133,8 @@ __all__ = [
     "compile_bundle",
     "compile_component_assembly",
     "compile_part",
+    "compile_reference_spatial_assembly",
+    "compile_reference_spatial_assembly_file",
     "compile_sketch_extrusion",
     "derive_component_manifest",
     "prepare_component_assembly",
@@ -140,6 +151,7 @@ __all__ = [
     "verify_design_around_projection",
     "verify_interface_assembly_result",
     "verify_interface_assembly_solution",
+    "verify_reference_spatial_assembly_bundle",
     "verify_sketch_bundle",
 ]
 
