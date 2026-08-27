@@ -16,6 +16,11 @@ from .component_assembly import (
     prepare_component_assembly,
     verify_component_assembly_bundle,
 )
+from .component_schema import (
+    SUPPORTED_COMPONENT_MANIFEST_SCHEMA_VERSIONS,
+    component_manifest_json_schema_text,
+    export_component_manifest_json_schema,
+)
 from .errors import ContrainteError, InputError, IntegrityError
 from .interface_assembly import (
     InterfaceAssembly,
@@ -258,6 +263,19 @@ def _parser() -> argparse.ArgumentParser:
         "verify", help="verify local component artifacts and source CAD evidence"
     )
     component_verify.add_argument("manifest", help="component manifest JSON")
+    component_schema = component_commands.add_parser(
+        "schema", help="export a public component-manifest JSON Schema"
+    )
+    component_schema.add_argument(
+        "schema_version",
+        choices=SUPPORTED_COMPONENT_MANIFEST_SCHEMA_VERSIONS,
+        help="exact public component-manifest schema identifier",
+    )
+    component_schema.add_argument(
+        "--output",
+        "-o",
+        help="write the schema to this path instead of standard output",
+    )
 
     interface_parser = subcommands.add_parser(
         "interface-assembly",
@@ -483,6 +501,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         verify_local_component_manifest(args.manifest), sort_keys=True
                     )
                 )
+                return 0
+            if args.component_command == "schema":
+                if args.output:
+                    export_component_manifest_json_schema(
+                        args.schema_version, args.output
+                    )
+                else:
+                    sys.stdout.write(
+                        component_manifest_json_schema_text(args.schema_version)
+                    )
                 return 0
         if args.command == "interface-assembly":
             assembly = InterfaceAssembly.from_dict(

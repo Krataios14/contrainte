@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "locator": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "engineering_bundle",
+            "exact_geometry",
+            "drawing",
+            "mesh",
+            "scene",
+            "material_record",
+            "solver_capsule",
+            "test_record"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "role",
+        "media_type",
+        "digest",
+        "locator"
+      ],
+      "type": "object"
+    },
+    "interface": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "enum": [
+            "input",
+            "output",
+            "bidirectional"
+          ],
+          "type": "string"
+        },
+        "interface_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "mechanical",
+            "material",
+            "electrical",
+            "utility",
+            "control",
+            "safety",
+            "spatial"
+          ],
+          "type": "string"
+        },
+        "medium": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "interface_id",
+        "kind",
+        "direction",
+        "medium"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:contrainte:schema:component-manifest:0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Closed public interchange shape. The runtime-only semantic invariants annotation identifies checks that require exact cross-field engineering logic in ComponentManifest.from_dict.",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/artifact"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "capabilities": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "component_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "interfaces": {
+      "items": {
+        "$ref": "#/$defs/interface"
+      },
+      "type": "array"
+    },
+    "lifecycle_state": {
+      "enum": [
+        "concept",
+        "released",
+        "retired"
+      ],
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "qualification": {
+      "enum": [
+        "unqualified_demonstration",
+        "engineering_reviewed",
+        "qualified_for_intended_use"
+      ],
+      "type": "string"
+    },
+    "revision": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "contrainte.component-manifest/0.1"
+    },
+    "source_bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "component_id",
+    "revision",
+    "title",
+    "lifecycle_state",
+    "qualification",
+    "source_bundle_digest",
+    "artifacts"
+  ],
+  "title": "Contrainte component manifest 0.1",
+  "type": "object",
+  "x-contrainte-runtime-only-semantic-invariants": [
+    {
+      "description": "artifact_id values are unique across artifacts.",
+      "id": "component.artifact-identifiers-unique"
+    },
+    {
+      "description": "source_bundle_digest identifies exactly one artifact whose role is engineering_bundle and whose digest is identical.",
+      "id": "component.source-bundle-linkage"
+    },
+    {
+      "description": "interface_id values are unique across interfaces.",
+      "id": "component.interface-identifiers-unique"
+    }
+  ]
+}

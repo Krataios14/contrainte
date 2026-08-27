@@ -76,6 +76,38 @@ def framed_manifest() -> dict:
     return raw
 
 
+def topology_manifest() -> dict:
+    raw = framed_manifest()
+    raw["schema_version"] = "contrainte.component-manifest/0.4"
+    raw["interfaces"][0]["frame"] = {
+        "reference": "engineering_bundle",
+        "unit": "mm",
+        "origin": {"x": "0", "y": "0", "z": "50"},
+        "basis": {
+            "x_axis": {"x": "1", "y": "0", "z": "0"},
+            "y_axis": {"x": "0", "y": "1", "z": "0"},
+            "z_axis": {"x": "0", "y": "0", "z": "1"},
+        },
+    }
+    raw["interfaces"][0]["attachment"] = {
+        "selector": {
+            "kind": "prismatic_stock_face",
+            "feature_id": "stock",
+            "role": "positive_z",
+        },
+        "evidence": {
+            "source_feature_digest": "sha256:" + "2" * 64,
+            "matched_face_count": 1,
+            "surface_type": "plane",
+            "origin_on_surface": True,
+            "orientation_matches": True,
+            "characteristic_point_mm": {"x": "0", "y": "0", "z": "50"},
+            "direction": {"x": "0", "y": "0", "z": "1"},
+        },
+    }
+    return raw
+
+
 class ComponentManifestTests(unittest.TestCase):
     def test_round_trip_is_stable(self) -> None:
         parsed = ComponentManifest.from_dict(valid_manifest())
@@ -170,6 +202,158 @@ class ComponentManifestTests(unittest.TestCase):
             exact_interface_frame(),
         )
         self.assertEqual(manifest, ComponentManifest.from_dict(manifest.as_dict()))
+
+    def test_schema_v4_round_trips_strict_topology_evidence(self) -> None:
+        document = topology_manifest()
+
+        manifest = ComponentManifest.from_dict(document)
+        reparsed = ComponentManifest.from_dict(manifest.as_dict())
+
+        self.assertEqual(manifest, reparsed)
+        self.assertEqual(manifest.as_dict(), document)
+        self.assertEqual(
+            manifest.interfaces[0].attachment.as_dict(),  # type: ignore[union-attr]
+            document["interfaces"][0]["attachment"],
+        )
+
+    def test_pre_v4_schemas_reject_topology_attachments(self) -> None:
+        for schema in (
+            "contrainte.component-manifest/0.1",
+            "contrainte.component-manifest/0.2",
+            "contrainte.component-manifest/0.3",
+        ):
+            with self.subTest(schema=schema):
+                raw = valid_manifest()
+                raw["schema_version"] = schema
+                if schema != "contrainte.component-manifest/0.1":
+                    raw["geometry_bounds"] = exact_geometry_bounds()
+                if schema == "contrainte.component-manifest/0.3":
+                    raw["interfaces"][0]["frame"] = exact_interface_frame()
+                raw["interfaces"][0]["attachment"] = copy.deepcopy(
+                    topology_manifest()["interfaces"][0]["attachment"]
+                )
+
+                with self.assertRaisesRegex(InputError, "unsupported fields"):
+                    ComponentManifest.from_dict(raw)
+
+    def test_schema_v4_requires_attachment_and_derived_evidence(self) -> None:
+        missing_attachment = topology_manifest()
+        del missing_attachment["interfaces"][0]["attachment"]
+        with self.assertRaisesRegex(InputError, "attachment is required"):
+            ComponentManifest.from_dict(missing_attachment)
+
+        missing_evidence = topology_manifest()
+        del missing_evidence["interfaces"][0]["attachment"]["evidence"]
+        with self.assertRaisesRegex(InputError, "evidence is required"):
+            ComponentManifest.from_dict(missing_evidence)
+
+        interface_document = topology_manifest()["interfaces"][0]
+        del interface_document["attachment"]
+        with self.assertRaisesRegex(InputError, "attachment is required"):
+            ComponentInterface.from_dict(
+                interface_document,
+                field="interface",
+                frame_required=True,
+                attachment_evidence_required=True,
+            )
+
+    def test_schema_v4_frame_origin_cannot_be_mutated_after_binding(self) -> None:
+        manifest = ComponentManifest.from_dict(topology_manifest())
+        frame = manifest.interfaces[0].frame
+        assert frame is not None
+
+        with self.assertRaises(TypeError):
+            frame.origin["x"] = frame.origin["x"] + 1  # type: ignore[index]
+
+    def test_component_interface_count_is_bounded(self) -> None:
+        legacy = valid_manifest()
+        legacy_template = legacy["interfaces"][0]
+        legacy["interfaces"] = []
+        for index in range(65):
+            interface = copy.deepcopy(legacy_template)
+            interface["interface_id"] = f"legacy-{index:02d}"
+            legacy["interfaces"].append(interface)
+        self.assertEqual(len(ComponentManifest.from_dict(legacy).interfaces), 65)
+
+        document = topology_manifest()
+        template = document["interfaces"][0]
+        document["interfaces"] = []
+        for index in range(65):
+            interface = copy.deepcopy(template)
+            interface["interface_id"] = f"mount-{index:02d}"
+            document["interfaces"].append(interface)
+
+        with self.assertRaisesRegex(InputError, "count limit"):
+            ComponentManifest.from_dict(document)
+
+        parsed = ComponentManifest.from_dict(topology_manifest())
+        with self.assertRaisesRegex(InputError, "count limit"):
+            ComponentManifest(
+                schema_version=parsed.schema_version,
+                component_id=parsed.component_id,
+                revision=parsed.revision,
+                title=parsed.title,
+                lifecycle_state=parsed.lifecycle_state,
+                qualification=parsed.qualification,
+                source_bundle_digest=parsed.source_bundle_digest,
+                artifacts=parsed.artifacts,
+                interfaces=parsed.interfaces * 65,
+                capabilities=parsed.capabilities,
+                geometry_bounds=parsed.geometry_bounds,
+                metadata=parsed.metadata,
+            )
+
+    def test_schema_v4_attachment_selectors_are_closed_and_typed(self) -> None:
+        cases = (
+            ("feature_id", "not-stock", "feature_id must be 'stock'"),
+            ("role", "cylindrical_wall", "role is unsupported"),
+            ("kind", "future_surface", "kind is unsupported"),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field, value=value):
+                raw = topology_manifest()
+                raw["interfaces"][0]["attachment"]["selector"][field] = value
+                with self.assertRaisesRegex(InputError, message):
+                    ComponentManifest.from_dict(raw)
+
+        unknown = topology_manifest()
+        unknown["interfaces"][0]["attachment"]["selector"]["future"] = "value"
+        with self.assertRaisesRegex(InputError, "unsupported fields"):
+            ComponentManifest.from_dict(unknown)
+
+    def test_schema_v4_attachment_evidence_is_strict_and_frame_bound(self) -> None:
+        mutations = (
+            ("matched_face_count", 2, "exactly 1"),
+            ("origin_on_surface", False, "must be true"),
+            ("orientation_matches", False, "must be true"),
+        )
+        for field, value, message in mutations:
+            with self.subTest(field=field):
+                raw = topology_manifest()
+                raw["interfaces"][0]["attachment"]["evidence"][field] = value
+                with self.assertRaisesRegex(InputError, message):
+                    ComponentManifest.from_dict(raw)
+
+        wrong_point = topology_manifest()
+        wrong_point["interfaces"][0]["attachment"]["evidence"][
+            "characteristic_point_mm"
+        ]["x"] = "1"
+        with self.assertRaisesRegex(InputError, "must equal the frame origin"):
+            ComponentManifest.from_dict(wrong_point)
+
+        wrong_direction = topology_manifest()
+        wrong_direction["interfaces"][0]["attachment"]["evidence"]["direction"] = {
+            "x": "1",
+            "y": "0",
+            "z": "0",
+        }
+        with self.assertRaisesRegex(InputError, "canonical role"):
+            ComponentManifest.from_dict(wrong_direction)
+
+        extra_evidence = topology_manifest()
+        extra_evidence["interfaces"][0]["attachment"]["evidence"]["future_claim"] = True
+        with self.assertRaisesRegex(InputError, "unsupported fields"):
+            ComponentManifest.from_dict(extra_evidence)
 
     def test_legacy_schemas_reject_interface_frames(self) -> None:
         for schema in (

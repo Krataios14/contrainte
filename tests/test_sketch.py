@@ -124,6 +124,7 @@ def circular_sketch_document() -> dict:
 
 
 class SketchExtrusionTests(unittest.TestCase):
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
     def test_exact_solver_fully_constrains_profile(self) -> None:
         sketch = SketchExtrusion.from_dict(sketch_document())
 
@@ -296,6 +297,7 @@ class SketchExtrusionTests(unittest.TestCase):
         with self.assertRaisesRegex(InputError, "must contain exactly"):
             SketchExtrusion.from_dict(document)
 
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
     def test_v2_has_symbolic_circular_area_and_volume_authority(self) -> None:
         sketch = SketchExtrusion.from_dict(circular_sketch_document())
 

@@ -17,6 +17,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - A deterministic analytical axial-tension solver.
 - Canonical JSON with stable SHA-256 bundle identifiers.
 - Content-addressed component manifests with typed interfaces, exact rational interface frames, and exact-geometry bounds reproduced from the source B-rep.
+- Versioned topology-backed component interfaces that bind frames to authored prismatic stock faces or named through-hole walls and independently replay the matching kernel face.
 - Exact rational rigid-transform algebra with proper-rotation proofs, composition, inversion, point application, and bounded canonical evidence.
 - Bounded exact interface-assembly search with ranked mating alternatives, cycle closure, explicit inconclusive states, an independent first-feasible replay oracle, and digest-bound hybrid placement around sealed protected references.
 - Digest-sealed reference components with evidence ceilings, physical frames, occupied/keepout/access/service envelopes, exact mass properties, unknown-field blockers, legal-workflow nonclaims, and independently replayed design-around projections.
@@ -102,6 +103,21 @@ python -m contrainte component verify artifacts/pedestal-bracket/component.fixtu
 ```
 
 Bounds containment is deliberately conservative: it does not claim that the frame is attached to a face, hole, or mating surface.
+
+Use release request 0.3 when a prismatic component interface must be attached to
+an authored stock face or named through-hole wall rather than merely contained by
+the B-rep bounds:
+
+```powershell
+python -m contrainte cad compile examples/mounting-plate.json --output-dir artifacts/mounting-plate-topology
+python -m contrainte component derive artifacts/mounting-plate-topology/plate.demo.cad-bundle.json examples/mounting-plate-topology-component.json --output artifacts/mounting-plate-topology/component.mounting-plate.topology-demo.json
+python -m contrainte component verify artifacts/mounting-plate-topology/component.mounting-plate.topology-demo.json
+```
+
+The resulting component manifest 0.4 records exact incidence and orientation,
+the authored feature digest, and a unique reproduced plane or cylinder. This is a
+narrow first topology contract for prismatic parts, not general persistent naming
+or manufacturing-release evidence.
 
 Place component occurrences through exact semantic interface equations and replay the complete search result:
 
@@ -191,9 +207,10 @@ Both examples use synthetic data and are explicitly unsuitable for engineering r
 
 ## Near-term development sequence
 
-The current CAD slice proves the authority chain on rectangular milled parts, polygonal constrained sketch extrusions with circular through-holes, strict exact-solid boolean programs, and exact rigid assemblies. It is not yet a full mechanical feature modeller. The next geometry gates are richer constraints and feature operations, persistent semantic topology, tolerance analysis, controlled drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
+The current CAD slice proves the authority chain on rectangular milled parts, polygonal constrained sketch extrusions with circular through-holes, strict exact-solid boolean programs, exact rigid assemblies, and a narrow prismatic topology-attachment contract. It is not yet a full mechanical feature modeller. The next geometry gates are richer constraints and feature operations, general persistent semantic topology, tolerance analysis, controlled drawings, STEP AP242 metadata, and broad parameter-perturbation tests. Source adapters, qualified material packs, solver capsules, contamination, cleaning, and qualified/GxP workflows follow as separate evidence gates.
 
 The [integration contract](docs/INTEGRATION_CONTRACT.md) documents how private or third-party systems consume released components.
+The [topology-attachment contract](docs/TOPOLOGY_ATTACHMENTS.md) defines the first authored-feature-to-kernel-face binding and its deliberate prismatic-only boundary.
 The [exact-transform contract](docs/EXACT_TRANSFORMS.md) defines local-to-parent composition semantics, strict rational invariants, and its evidence boundary.
 The [interface-assembly contract](docs/INTERFACE_ASSEMBLIES.md) defines exact mating equations, ranked bounded search, independent terminal replay, and design-around nonclaims.
 The [geometry-backed component-assembly contract](docs/COMPONENT_ASSEMBLIES.md) defines verified local-release binding, direct exact-matrix projection, nominal B-rep pair checks, and its deliberate evidence limits.

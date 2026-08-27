@@ -4,7 +4,7 @@
 
 Contrainte owns the engineering definition of a physical component. A consuming system may arrange, schedule, simulate, visualize, procure, operate, or monitor that component, but it must not silently replace the component's dimensional, material, solver, contamination, cleaning, or evidence semantics.
 
-The public boundary preserves `contrainte.component-manifest/0.1` and `0.2` documents. A `contrainte.component-release-request/0.1` still derives manifest 0.2 with reproduced geometry bounds. Release request 0.2 adds exact semantic interface frames and derives component manifest 0.3. It lets another system identify a component release, verify content-addressed artifacts, discover typed and located interfaces, inspect lifecycle and qualification state, and enforce a conservative spatial envelope from reproduced exact geometry.
+The public boundary preserves `contrainte.component-manifest/0.1` through `0.4` documents. A `contrainte.component-release-request/0.1` still derives manifest 0.2 with reproduced geometry bounds. Release request 0.2 adds exact semantic interface frames and derives component manifest 0.3. Release request 0.3 adds prismatic authored-feature attachments and derives manifest 0.4. These contracts let another system identify a component release, verify content-addressed artifacts, discover typed and located interfaces, inspect lifecycle and qualification state, and enforce a conservative spatial envelope from reproduced exact geometry.
 
 ## Authority boundary
 
@@ -54,11 +54,11 @@ The `engineering_bundle` artifact matching `source_bundle_digest` is mandatory. 
 
 For a locally derived component, `source_bundle_digest` is the SHA-256 of the serialized engineering-bundle file. The bundle's canonical semantic digest is retained separately as `metadata.engineering_bundle_content_digest`. This distinction lets a consumer prove both the exact retrieved bytes and the canonical engineering content they contain.
 
-`contrainte component derive` accepts only a verified prismatic CAD, constrained-sketch extrusion (bundle 0.1 or circular-through-hole bundle 0.2), exact-solid, or assembly bundle. It always emits `lifecycle_state=concept` and `qualification=unqualified_demonstration`; neither can be supplied by the request. It carries every bundle artifact into the manifest and writes repository-local locators only when the manifest is beside the bundle. `contrainte component verify` re-runs the source bundle verifier, checks every byte digest, rejects path traversal, rejects missing geometry, and detects lifecycle or qualification promotion. Manifest 0.3 also pins the canonical release-request content digest, so a changed frame or other request-derived field fails local reproduction unless the derivation record is deliberately rewritten too. This is an integrity check, not a signature or proof of authorship.
+`contrainte component derive` accepts only a verified prismatic CAD, constrained-sketch extrusion (bundle 0.1 or circular-through-hole bundle 0.2), exact-solid, or assembly bundle. Topology-backed release request 0.3 is narrower and accepts only a verified prismatic CAD bundle. Derivation first captures the bundle and every declared artifact into one bounded stable snapshot, then verifies and derives from those captured bytes. It always emits `lifecycle_state=concept` and `qualification=unqualified_demonstration`; neither can be supplied by the request. It carries every bundle artifact into the manifest and writes repository-local locators only when the manifest is beside the bundle. `contrainte component verify` repeats the stable snapshot, source verifier, byte-digest, path, geometry, and lifecycle checks. Manifests 0.3 and 0.4 also pin the canonical release-request content digest, so a changed frame, selector, or other request-derived field fails local reproduction unless the derivation record is deliberately rewritten too. This is an integrity check, not a signature or proof of authorship.
 
 ## Exact geometry bounds
 
-Schemas 0.2 and 0.3 require `geometry_bounds`. The minimum and maximum x, y, and z coordinates are decimal strings in millimetres in the engineering bundle's coordinate frame. Contrainte derives them from the reproduced Open CASCADE boundary representation; release requests cannot supply or override them. Local verification rebuilds the exact geometry and rejects altered bounds even when the surrounding manifest remains structurally valid.
+Schemas 0.2, 0.3, and 0.4 require `geometry_bounds`. The minimum and maximum x, y, and z coordinates are decimal strings in millimetres in the engineering bundle's coordinate frame. Contrainte derives them from the reproduced Open CASCADE boundary representation; release requests cannot supply or override them. Local verification rebuilds the exact geometry and rejects altered bounds even when the surrounding manifest remains structurally valid.
 
 Bounds are an axis-aligned broad-phase contract, not a substitute for shape-level collision, tolerance, motion-sweep, access, maintenance, or human-clearance analysis. A consumer may enlarge the envelope, but must not claim that a smaller envelope contains the component.
 
@@ -77,7 +77,9 @@ Release request 0.2 and component manifest 0.3 require every declared interface 
 
 The parser proves with exact rational arithmetic that every basis vector has unit length, every pair is orthogonal, and the determinant is exactly +1. Approximate trigonometric matrices do not pass. Rational rotations such as a 3-4-5 basis are supported without tolerance decisions. Decimal and rational spellings must already be canonical and each scalar is capped at 128 characters before numeric parsing. Each origin must lie within or on the reproduced B-rep axis-aligned bounds. Boundary inclusion is intentional.
 
-This check locates a semantic frame inside the component's conservative spatial envelope. It does **not** prove that the origin lies in the solid, on a face, at a hole centre, on a mating surface, or on persistent semantic topology. The frame schema therefore has no surface-attachment field. Shape membership and topology-backed attachment require separate future evidence and a new schema.
+For manifest 0.3, this check locates a semantic frame inside the component's conservative spatial envelope. It does **not** prove that the origin lies in the solid, on a face, at a hole centre, on a mating surface, or on persistent semantic topology. Its frame therefore has no surface-attachment field.
+
+Release request 0.3 and manifest 0.4 add the separate `attachment` field. The first attachment contract resolves only prismatic stock faces and named through-hole cylindrical walls, checks exact incidence and orientation, requires one reproduced kernel face, and records derived evidence. See [Topology-backed component interfaces](TOPOLOGY_ATTACHMENTS.md) for its schema, replay rules, and deliberate limits.
 
 Release request 0.1 and manifests 0.1/0.2 reject framed interfaces rather than silently assigning the new meaning to an old schema. Their JSON shapes, Python construction, and derivation output remain unchanged.
 
@@ -91,6 +93,7 @@ Manifests are parsed without binary floating-point engineering values. Canonical
 - Additive Python APIs may appear in minor releases.
 - A manifest shape or semantic change requires a new schema identifier.
 - Component manifest 0.3 is additive at the API level but intentionally not valid as 0.1 or 0.2 content; use release request 0.2 to create it.
+- Component manifest 0.4 is intentionally not valid as earlier content; use release request 0.3 and a verified prismatic CAD bundle to create it.
 - Consumers must reject unknown schema identifiers unless an explicit migration is available.
 - Public deprecations receive a documented migration path before removal.
 

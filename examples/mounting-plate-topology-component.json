@@ -1,0 +1,61 @@
+{
+  "schema_version": "contrainte.component-release-request/0.3",
+  "component_id": "component.mounting-plate.topology-demo",
+  "revision": "A",
+  "title": "Geometry-backed mounting plate with a topology-backed interface",
+  "interfaces": [
+    {
+      "interface_id": "mount-nw-wall",
+      "kind": "mechanical",
+      "direction": "bidirectional",
+      "medium": "bolted_joint",
+      "properties": {"datum": "mount-nw-cylinder"},
+      "frame": {
+        "reference": "engineering_bundle",
+        "unit": "mm",
+        "origin": {"x": "-35", "y": "20", "z": "5"},
+        "basis": {
+          "x_axis": {"x": "1", "y": "0", "z": "0"},
+          "y_axis": {"x": "0", "y": "1", "z": "0"},
+          "z_axis": {"x": "0", "y": "0", "z": "1"}
+        }
+      },
+      "attachment": {
+        "selector": {
+          "kind": "prismatic_through_hole",
+          "feature_id": "mount-nw",
+          "role": "cylindrical_wall"
+        }
+      }
+    },
+    {
+      "interface_id": "top-mounting-plane",
+      "kind": "mechanical",
+      "direction": "bidirectional",
+      "medium": "bolted_joint",
+      "properties": {"datum": "top-stock-face"},
+      "frame": {
+        "reference": "engineering_bundle",
+        "unit": "mm",
+        "origin": {"x": "0", "y": "0", "z": "10"},
+        "basis": {
+          "x_axis": {"x": "1", "y": "0", "z": "0"},
+          "y_axis": {"x": "0", "y": "1", "z": "0"},
+          "z_axis": {"x": "0", "y": "0", "z": "1"}
+        }
+      },
+      "attachment": {
+        "selector": {
+          "kind": "prismatic_stock_face",
+          "feature_id": "stock",
+          "role": "positive_z"
+        }
+      }
+    }
+  ],
+  "capabilities": ["fixture_support"],
+  "metadata": {
+    "data_class": "synthetic",
+    "release_use": "demonstration_only"
+  }
+}

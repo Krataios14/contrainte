@@ -328,15 +328,17 @@ applicable downstream evidence gate. AI may propose alternatives; it cannot
 promote a candidate to verified status.
 
 Version 0.2 makes the protected occurrence native to the semantic graph, but it
-does not yet perform conservative occupied, keepout, access, or service-envelope
-checks. That remains the next separate spatial-evidence gate. It also does not
+does not itself perform conservative occupied, keepout, access, or service-envelope
+checks. The separate [`reference-spatial-assembly/0.1`](REFERENCE_SPATIAL_ASSEMBLIES.md)
+contract now performs that bounded downstream gate against verified local B-reps.
+The semantic solver also does not
 interpret electrical property strings as voltage, current, pin, protection, or
 circuit-simulation evidence.
 
 `component-assembly/0.1` accepts only version 0.1 interface assemblies and exact
 local component releases. A version 0.2 occurrence deliberately refuses that
 legacy geometry handoff, including when its participant happens to be a released
-component, so a mixed graph cannot silently bypass the future spatial-evidence
+component, so a mixed graph cannot silently bypass the versioned spatial-evidence
 contract.
 
 For locally derived `component-manifest/0.3` occurrences, the separate

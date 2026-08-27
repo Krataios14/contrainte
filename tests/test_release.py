@@ -7,12 +7,15 @@ from importlib.util import find_spec
 from pathlib import Path
 from unittest.mock import patch
 
+from contrainte.artifacts import file_digest
+from contrainte.cad import compile_part, load_part
 from contrainte.canonical import dumps_pretty, loads_strict
 from contrainte.component import ArtifactRole, Qualification
 from contrainte.errors import InputError, IntegrityError
 from contrainte.release import (
     ComponentReleaseRequest,
     derive_component_manifest,
+    load_release_request,
     reproduce_local_component_shape,
     verify_local_component_manifest,
     write_component_manifest,
@@ -26,6 +29,10 @@ SKETCH_EXAMPLE = (
 )
 CIRCULAR_SKETCH_EXAMPLE = (
     Path(__file__).parents[1] / "examples" / "circular-through-hole-plate.json"
+)
+CAD_EXAMPLE = Path(__file__).parents[1] / "examples" / "mounting-plate.json"
+TOPOLOGY_REQUEST_EXAMPLE = (
+    Path(__file__).parents[1] / "examples" / "mounting-plate-topology-component.json"
 )
 
 
@@ -64,6 +71,19 @@ class ComponentReleaseTests(unittest.TestCase):
         }
         return document
 
+    def topology_request_document(self) -> dict:
+        return loads_strict(TOPOLOGY_REQUEST_EXAMPLE.read_bytes())
+
+    def topology_fixture(self, root: Path):
+        part = load_part(CAD_EXAMPLE)
+        compile_part(part, root)
+        bundle_path = root / f"{part.part_id}.cad-bundle.json"
+        request = ComponentReleaseRequest.from_dict(self.topology_request_document())
+        manifest = derive_component_manifest(bundle_path, request)
+        manifest_path = root / "component.mounting-plate.topology-demo.json"
+        write_component_manifest(manifest_path, manifest, bundle_path=bundle_path)
+        return manifest, manifest_path, bundle_path
+
     def test_release_request_rejects_promotion_fields(self) -> None:
         document = self.request_document()
         document["qualification"] = "engineering_reviewed"
@@ -77,6 +97,54 @@ class ComponentReleaseTests(unittest.TestCase):
 
         with self.assertRaisesRegex(InputError, "ascending lexical order"):
             ComponentReleaseRequest.from_dict(document)
+
+    def test_release_request_size_and_interface_count_are_bounded(self) -> None:
+        legacy = self.request_document()
+        legacy_template = legacy["interfaces"][0]
+        legacy["interfaces"] = []
+        for index in range(65):
+            interface = copy.deepcopy(legacy_template)
+            interface["interface_id"] = f"legacy-{index:02d}"
+            legacy["interfaces"].append(interface)
+        self.assertEqual(len(ComponentReleaseRequest.from_dict(legacy).interfaces), 65)
+
+        document = self.topology_request_document()
+        template = document["interfaces"][0]
+        document["interfaces"] = []
+        for index in range(64):
+            interface = copy.deepcopy(template)
+            interface["interface_id"] = f"mount-{index:02d}"
+            document["interfaces"].append(interface)
+        self.assertEqual(
+            len(ComponentReleaseRequest.from_dict(document).interfaces), 64
+        )
+
+        document["interfaces"].append(
+            {
+                **copy.deepcopy(template),
+                "interface_id": "mount-64",
+            }
+        )
+        with self.assertRaisesRegex(InputError, "count limit"):
+            ComponentReleaseRequest.from_dict(document)
+
+        parsed = ComponentReleaseRequest.from_dict(self.topology_request_document())
+        with self.assertRaisesRegex(InputError, "count limit"):
+            ComponentReleaseRequest(
+                schema_version=parsed.schema_version,
+                component_id=parsed.component_id,
+                revision=parsed.revision,
+                title=parsed.title,
+                interfaces=parsed.interfaces * 65,
+                capabilities=parsed.capabilities,
+                metadata=parsed.metadata,
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            request_path = Path(directory) / "oversized-request.json"
+            request_path.write_bytes(b" " * (1024 * 1024 + 1))
+            with self.assertRaisesRegex(InputError, "byte limit"):
+                load_release_request(request_path)
 
     @unittest.skipUnless(
         find_spec("build123d"), "optional CAD backend is not installed"
@@ -276,6 +344,44 @@ class ComponentReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(InputError, "frame is required"):
             ComponentReleaseRequest.from_dict(framed)
 
+    def test_topology_request_requires_frame_attachment_and_no_evidence(self) -> None:
+        document = self.topology_request_document()
+        request = ComponentReleaseRequest.from_dict(document)
+        self.assertEqual(request.as_dict(), document)
+
+        missing_frame = copy.deepcopy(document)
+        del missing_frame["interfaces"][0]["frame"]
+        with self.assertRaisesRegex(InputError, "frame is required"):
+            ComponentReleaseRequest.from_dict(missing_frame)
+
+        missing_attachment = copy.deepcopy(document)
+        del missing_attachment["interfaces"][0]["attachment"]
+        with self.assertRaisesRegex(InputError, "attachment is required"):
+            ComponentReleaseRequest.from_dict(missing_attachment)
+
+        supplied_evidence = copy.deepcopy(document)
+        supplied_evidence["interfaces"][0]["attachment"]["evidence"] = {}
+        with self.assertRaisesRegex(InputError, "unsupported fields"):
+            ComponentReleaseRequest.from_dict(supplied_evidence)
+
+    def test_pre_v3_requests_reject_topology_attachments(self) -> None:
+        selector = copy.deepcopy(
+            self.topology_request_document()["interfaces"][0]["attachment"]
+        )
+        for schema in (
+            "contrainte.component-release-request/0.1",
+            "contrainte.component-release-request/0.2",
+        ):
+            with self.subTest(schema=schema):
+                document = (
+                    self.request_document()
+                    if schema.endswith("/0.1")
+                    else self.framed_request_document()
+                )
+                document["interfaces"][0]["attachment"] = copy.deepcopy(selector)
+                with self.assertRaisesRegex(InputError, "unsupported fields"):
+                    ComponentReleaseRequest.from_dict(document)
+
     def test_direct_framed_request_requires_frames(self) -> None:
         legacy = ComponentReleaseRequest.from_dict(self.request_document())
 
@@ -409,6 +515,281 @@ class ComponentReleaseTests(unittest.TestCase):
 
             with self.assertRaisesRegex(IntegrityError, "derivation"):
                 verify_local_component_manifest(manifest_path)
+
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_topology_request_derives_and_verifies_component_v4(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, manifest_path, bundle_path = self.topology_fixture(root)
+            reproduced = derive_component_manifest(
+                bundle_path,
+                ComponentReleaseRequest.from_dict(self.topology_request_document()),
+            )
+
+            report = verify_local_component_manifest(manifest_path)
+
+            self.assertEqual(report["status"], "verified")
+            self.assertEqual(manifest, reproduced)
+            self.assertEqual(
+                manifest.schema_version, "contrainte.component-manifest/0.4"
+            )
+            self.assertEqual(
+                manifest.metadata["derivation"], "verified_exact_bundle/0.3"
+            )
+            attachments = {
+                interface.interface_id: interface.attachment.as_dict()  # type: ignore[union-attr]
+                for interface in manifest.interfaces
+            }
+            self.assertEqual(
+                attachments["mount-nw-wall"]["evidence"]["surface_type"],
+                "cylinder",
+            )
+            self.assertEqual(attachments["mount-nw-wall"]["evidence"]["radius_mm"], "5")
+            self.assertEqual(
+                attachments["top-mounting-plane"]["evidence"]["surface_type"],
+                "plane",
+            )
+
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_topology_derivation_rejects_unproved_attachment_geometry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = load_part(CAD_EXAMPLE)
+            compile_part(part, root)
+            bundle_path = root / f"{part.part_id}.cad-bundle.json"
+
+            off_surface = self.topology_request_document()
+            off_surface["interfaces"][1]["frame"]["origin"]["z"] = "9"
+
+            wrong_orientation = self.topology_request_document()
+            wrong_orientation["interfaces"][0]["frame"]["basis"] = {
+                "x_axis": {"x": "-1", "y": "0", "z": "0"},
+                "y_axis": {"x": "0", "y": "1", "z": "0"},
+                "z_axis": {"x": "0", "y": "0", "z": "-1"},
+            }
+
+            unknown_feature = self.topology_request_document()
+            unknown_feature["interfaces"][0]["attachment"]["selector"]["feature_id"] = (
+                "missing-hole"
+            )
+
+            for document, message in (
+                (off_surface, "not on the selected stock-face plane"),
+                (wrong_orientation, "through-hole axis"),
+                (unknown_feature, "unknown prismatic through-hole"),
+            ):
+                with self.subTest(message=message):
+                    request = ComponentReleaseRequest.from_dict(document)
+                    with self.assertRaisesRegex(InputError, message):
+                        derive_component_manifest(bundle_path, request)
+
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_every_prismatic_stock_face_role_resolves_uniquely(self) -> None:
+        cases = {
+            "negative_x": (
+                {"x": "-60", "y": "0", "z": "5"},
+                (
+                    {"x": "0", "y": "1", "z": "0"},
+                    {"x": "0", "y": "0", "z": "-1"},
+                    {"x": "-1", "y": "0", "z": "0"},
+                ),
+            ),
+            "positive_x": (
+                {"x": "60", "y": "0", "z": "5"},
+                (
+                    {"x": "0", "y": "1", "z": "0"},
+                    {"x": "0", "y": "0", "z": "1"},
+                    {"x": "1", "y": "0", "z": "0"},
+                ),
+            ),
+            "negative_y": (
+                {"x": "0", "y": "-40", "z": "5"},
+                (
+                    {"x": "1", "y": "0", "z": "0"},
+                    {"x": "0", "y": "0", "z": "1"},
+                    {"x": "0", "y": "-1", "z": "0"},
+                ),
+            ),
+            "positive_y": (
+                {"x": "0", "y": "40", "z": "5"},
+                (
+                    {"x": "1", "y": "0", "z": "0"},
+                    {"x": "0", "y": "0", "z": "-1"},
+                    {"x": "0", "y": "1", "z": "0"},
+                ),
+            ),
+            "negative_z": (
+                {"x": "0", "y": "0", "z": "0"},
+                (
+                    {"x": "1", "y": "0", "z": "0"},
+                    {"x": "0", "y": "-1", "z": "0"},
+                    {"x": "0", "y": "0", "z": "-1"},
+                ),
+            ),
+            "positive_z": (
+                {"x": "0", "y": "0", "z": "10"},
+                (
+                    {"x": "1", "y": "0", "z": "0"},
+                    {"x": "0", "y": "1", "z": "0"},
+                    {"x": "0", "y": "0", "z": "1"},
+                ),
+            ),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = load_part(CAD_EXAMPLE)
+            compile_part(part, root)
+            bundle_path = root / f"{part.part_id}.cad-bundle.json"
+            document = self.topology_request_document()
+            template = document["interfaces"][1]
+            document["interfaces"] = []
+            for role, (origin, axes) in cases.items():
+                interface = copy.deepcopy(template)
+                interface["interface_id"] = f"stock-{role}"
+                interface["frame"]["origin"] = origin
+                interface["frame"]["basis"] = {
+                    "x_axis": axes[0],
+                    "y_axis": axes[1],
+                    "z_axis": axes[2],
+                }
+                interface["attachment"]["selector"]["role"] = role
+                document["interfaces"].append(interface)
+
+            manifest = derive_component_manifest(
+                bundle_path, ComponentReleaseRequest.from_dict(document)
+            )
+
+            self.assertEqual(len(manifest.interfaces), 6)
+            self.assertTrue(
+                all(
+                    interface.attachment.evidence.surface_type.value == "plane"  # type: ignore[union-attr]
+                    for interface in manifest.interfaces
+                )
+            )
+
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_attachment_points_must_avoid_topology_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = load_part(CAD_EXAMPLE)
+            compile_part(part, root)
+            bundle_path = root / f"{part.part_id}.cad-bundle.json"
+
+            stock_edge = self.topology_request_document()
+            stock_edge["interfaces"][1]["frame"]["origin"] = {
+                "x": "60",
+                "y": "0",
+                "z": "10",
+            }
+            stock_hole = self.topology_request_document()
+            stock_hole["interfaces"][1]["frame"]["origin"] = {
+                "x": "-40",
+                "y": "20",
+                "z": "10",
+            }
+            cylinder_endpoint = self.topology_request_document()
+            cylinder_endpoint["interfaces"][0]["frame"]["origin"]["z"] = "0"
+
+            for document, message in (
+                (stock_edge, "strictly inside the selected stock face"),
+                (stock_hole, "strictly inside the selected stock face"),
+                (cylinder_endpoint, "strictly on the selected cylindrical hole wall"),
+            ):
+                with (
+                    self.subTest(message=message),
+                    self.assertRaisesRegex(InputError, message),
+                ):
+                    derive_component_manifest(
+                        bundle_path,
+                        ComponentReleaseRequest.from_dict(document),
+                    )
+
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_topology_release_rejects_non_prismatic_and_ambiguous_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            program = load_solid_program(SOLID_EXAMPLE)
+            compile_solid_program(program, root)
+            solid_bundle = root / f"{program.part_id}.solid-bundle.json"
+            request = ComponentReleaseRequest.from_dict(
+                self.topology_request_document()
+            )
+            with self.assertRaisesRegex(InputError, "verified prismatic CAD bundle"):
+                derive_component_manifest(solid_bundle, request)
+
+            part = load_part(CAD_EXAMPLE)
+            compile_part(part, root)
+            cad_bundle = root / f"{part.part_id}.cad-bundle.json"
+            with (
+                patch(
+                    "contrainte.release._compiler_stock_face_matches",
+                    return_value=[object(), object()],
+                ),
+                self.assertRaisesRegex(InputError, "resolved to 2 kernel faces"),
+            ):
+                derive_component_manifest(cad_bundle, request)
+
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_topology_verifier_rejects_plausible_evidence_tampering(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, manifest_path, _ = self.topology_fixture(root)
+            tampered = loads_strict(manifest_path.read_bytes())
+            tampered["interfaces"][0]["attachment"]["evidence"][
+                "source_feature_digest"
+            ] = "sha256:" + "f" * 64
+            manifest_path.write_text(
+                dumps_pretty(tampered), encoding="utf-8", newline="\n"
+            )
+
+            with self.assertRaisesRegex(
+                IntegrityError, "attachment evidence does not reproduce"
+            ):
+                verify_local_component_manifest(manifest_path)
+
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_derivation_binds_one_stable_source_bundle_snapshot(self) -> None:
+        import contrainte.release as release_module
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = load_part(CAD_EXAMPLE)
+            compile_part(part, root)
+            bundle_path = root / f"{part.part_id}.cad-bundle.json"
+            original_bytes = bundle_path.read_bytes()
+            original_digest = file_digest(bundle_path)
+            real_verify = release_module.verify_cad_bundle
+
+            def replace_original_after_verify(snapshot_path):
+                report = real_verify(snapshot_path)
+                bundle_path.write_bytes(original_bytes + b"\n ")
+                return report
+
+            with patch(
+                "contrainte.release.verify_cad_bundle",
+                side_effect=replace_original_after_verify,
+            ):
+                manifest = derive_component_manifest(
+                    bundle_path,
+                    ComponentReleaseRequest.from_dict(self.topology_request_document()),
+                )
+
+            self.assertNotEqual(file_digest(bundle_path), original_digest)
+            self.assertEqual(manifest.source_bundle_digest, original_digest)
 
     def test_legacy_request_keeps_preexisting_user_metadata_namespace(self) -> None:
         document = self.request_document()

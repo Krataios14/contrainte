@@ -8,6 +8,12 @@ from .component import (
     ComponentInterface,
     ComponentManifest,
     ExactInterfaceFrame,
+    InterfaceAttachment,
+    InterfaceAttachmentEvidence,
+    InterfaceAttachmentKind,
+    InterfaceAttachmentRole,
+    InterfaceAttachmentSelector,
+    InterfaceAttachmentSurfaceType,
 )
 from .component_assembly import (
     ComponentAssembly,
@@ -17,6 +23,13 @@ from .component_assembly import (
     compile_component_assembly,
     prepare_component_assembly,
     verify_component_assembly_bundle,
+)
+from .component_schema import (
+    JSON_SCHEMA_DIALECT,
+    SUPPORTED_COMPONENT_MANIFEST_SCHEMA_VERSIONS,
+    component_manifest_json_schema,
+    component_manifest_json_schema_text,
+    export_component_manifest_json_schema,
 )
 from .exact_transform import ExactRigidTransform, ExactRotation3, ExactVector3
 from .interface_assembly import (
@@ -78,6 +91,8 @@ from .solid import SolidProgram
 from .workspace import DesignWorkspace, ObjectRef
 
 __all__ = [
+    "JSON_SCHEMA_DIALECT",
+    "SUPPORTED_COMPONENT_MANIFEST_SCHEMA_VERSIONS",
     "ArtifactRef",
     "Assembly",
     "AxialCase",
@@ -102,6 +117,12 @@ __all__ = [
     "InconclusiveReason",
     "InterfaceAssembly",
     "InterfaceAssemblyResult",
+    "InterfaceAttachment",
+    "InterfaceAttachmentEvidence",
+    "InterfaceAttachmentKind",
+    "InterfaceAttachmentRole",
+    "InterfaceAttachmentSelector",
+    "InterfaceAttachmentSurfaceType",
     "InterfaceEndpoint",
     "InterfaceEvidenceSummary",
     "InterfaceMate",
@@ -136,7 +157,10 @@ __all__ = [
     "compile_reference_spatial_assembly",
     "compile_reference_spatial_assembly_file",
     "compile_sketch_extrusion",
+    "component_manifest_json_schema",
+    "component_manifest_json_schema_text",
     "derive_component_manifest",
+    "export_component_manifest_json_schema",
     "prepare_component_assembly",
     "project_design_around",
     "reproduce_local_component_shape",
