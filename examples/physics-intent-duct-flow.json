@@ -1,0 +1,335 @@
+{
+  "acceptance": {
+    "kind": "exploratory",
+    "rationale": "Screening only; no acceptance limit has been set."
+  },
+  "assumptions": [
+    {
+      "assumption_id": "ASM-EXAMPLE-VALUES",
+      "critical": false,
+      "impact": "No engineering conclusion may be drawn from these values.",
+      "owner": "Contrainte example authors",
+      "rationale": "Demonstrates the intent and applicability mechanism only.",
+      "statement": "Example values stand in for project data.",
+      "status": "open",
+      "verification_plan": "Replace with measured or supplier-declared values before any controlled use."
+    }
+  ],
+  "boundary_conditions": [
+    {
+      "applies_to": "FEA-DUCT-FLUID",
+      "bc_id": "BC-INLET",
+      "description": "Uniform inlet speed",
+      "kind": "inlet"
+    },
+    {
+      "applies_to": "FEA-DUCT-FLUID",
+      "bc_id": "BC-WALL",
+      "description": "No-slip wall",
+      "kind": "wall"
+    }
+  ],
+  "candidate_model_forms": [
+    "incompressible_flow",
+    "continuum_flow"
+  ],
+  "criticality": "non_critical",
+  "decision": {
+    "owner": "Example flow engineer",
+    "requirement_ids": [
+      "REQ-DUCT-PRESSURE-DROP"
+    ],
+    "statement": "Decide whether a constant-density flow model is adequate for duct pressure-drop screening."
+  },
+  "domains": [
+    "incompressible_flow",
+    "laminar_turbulence"
+  ],
+  "environment": {
+    "conditions": [
+      "SCL-INLET-PRESSURE"
+    ],
+    "description": "Inlet air state",
+    "state_id": "ENV-INLET"
+  },
+  "evidence": [
+    {
+      "content_digest": "sha256:9ec5ad063b7ce7f5c50553ab8c3950429795ed1b7e15377bee3faae769e1d928",
+      "evidence_id": "EVD-EXAMPLE-INPUTS",
+      "kind": "synthetic_illustration",
+      "locator": "examples (synthetic)",
+      "title": "Illustrative input values"
+    }
+  ],
+  "failure_modes": [
+    {
+      "description": "Fan cannot supply the drop",
+      "failure_mode_id": "FM-EXCESS-PRESSURE-DROP"
+    }
+  ],
+  "geometry": {
+    "excluded": [
+      {
+        "reason": "Rigid wall; structure not modeled.",
+        "ref_id": "FEA-DUCT-WALL"
+      }
+    ],
+    "modeled": [
+      {
+        "description": "Internal air volume",
+        "ref_id": "FEA-DUCT-FLUID",
+        "role": "region",
+        "source_digest": null
+      }
+    ],
+    "simplifications": [
+      {
+        "description": "Bends ignored",
+        "rationale": "Screening of the straight run only.",
+        "simplification_id": "SIM-STRAIGHT-DUCT"
+      }
+    ]
+  },
+  "group_declarations": [
+    {
+      "bindings": {
+        "flow_speed": "SCL-FLOW-SPEED",
+        "speed_of_sound": "SCL-SPEED-OF-SOUND"
+      },
+      "declaration_id": "GRP-MACH",
+      "form_id": "mach.speed_ratio",
+      "group_id": "mach"
+    },
+    {
+      "bindings": {
+        "density_change": "SCL-DENSITY-CHANGE",
+        "reference_density": "SCL-AIR-DENSITY"
+      },
+      "declaration_id": "GRP-DENSITY-VARIATION",
+      "form_id": "density_variation.relative",
+      "group_id": "density_variation"
+    },
+    {
+      "bindings": {
+        "characteristic_length": "SCL-DUCT-DIAMETER",
+        "density": "SCL-AIR-DENSITY",
+        "dynamic_viscosity": "SCL-AIR-VISCOSITY",
+        "flow_speed": "SCL-FLOW-SPEED"
+      },
+      "declaration_id": "GRP-REYNOLDS",
+      "form_id": "reynolds.dynamic_viscosity",
+      "group_id": "reynolds"
+    },
+    {
+      "bindings": {
+        "characteristic_length": "SCL-DUCT-DIAMETER",
+        "mean_free_path": "SCL-MEAN-FREE-PATH"
+      },
+      "declaration_id": "GRP-KNUDSEN",
+      "form_id": "knudsen.mean_free_path",
+      "group_id": "knudsen"
+    }
+  ],
+  "initial_conditions": {
+    "conditions": [],
+    "rationale": "Steady screen.",
+    "relevance": "not_relevant"
+  },
+  "intent_id": "PHY-DUCT-FLOW-SCREEN",
+  "interfaces": [],
+  "loads": [],
+  "materials": [
+    {
+      "applies_to": [
+        "FEA-DUCT-FLUID"
+      ],
+      "material_ref": "MAT-AIR",
+      "model_requirement": "newtonian_fluid",
+      "record_digest": null
+    }
+  ],
+  "model_form_alternatives": [
+    {
+      "disposition": "deferred",
+      "model_form": "compressible_flow",
+      "rationale": "Escalate if the Mach rule is not cleared by review."
+    }
+  ],
+  "nonlinearities": [
+    {
+      "description": "Steady internal flow screen.",
+      "kind": "none_expected"
+    }
+  ],
+  "requested_mode": "exploration",
+  "revision": "A",
+  "rule_set_pin": {
+    "digest": "sha256:e0d129198ede47d8dc9148bf6827e2562a5be9f4f46d45ae561ef53bc59a244f",
+    "revision": "1",
+    "rule_set_id": "RULESET-ILLUSTRATIVE-SCREENING"
+  },
+  "scales": [
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Bulk flow speed",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "velocity",
+        "unit": "km/h",
+        "value": "379.44"
+      },
+      "scale_id": "SCL-FLOW-SPEED"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Speed of sound at inlet temperature (declared, not computed)",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "velocity",
+        "unit": "m/s",
+        "value": "340"
+      },
+      "scale_id": "SCL-SPEED-OF-SOUND"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Inlet air density",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "density",
+        "unit": "kg/m3",
+        "value": "1.2"
+      },
+      "scale_id": "SCL-AIR-DENSITY"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Expected density change along the duct",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "density",
+        "unit": "kg/m3",
+        "value": "0.05"
+      },
+      "scale_id": "SCL-DENSITY-CHANGE"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Hydraulic diameter",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "length",
+        "unit": "mm",
+        "value": "100"
+      },
+      "scale_id": "SCL-DUCT-DIAMETER"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Dynamic viscosity of air",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "dynamic_viscosity",
+        "unit": "mPa.s",
+        "value": "0.0181"
+      },
+      "scale_id": "SCL-AIR-VISCOSITY"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Mean free path (declared, not computed)",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "length",
+        "unit": "nm",
+        "value": "68"
+      },
+      "scale_id": "SCL-MEAN-FREE-PATH"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Inlet absolute pressure",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "absolute_pressure",
+        "unit": "kPa",
+        "value": "101.325"
+      },
+      "scale_id": "SCL-INLET-PRESSURE"
+    }
+  ],
+  "schema_version": "contrainte.physics-intent/0.1",
+  "target_outputs": [
+    {
+      "description": "Inlet-to-outlet static pressure drop",
+      "kind": "stress",
+      "location_ref": "FEA-DUCT-FLUID",
+      "output_id": "QOI-PRESSURE-DROP",
+      "unit": "Pa"
+    }
+  ],
+  "time": {
+    "character": "steady",
+    "duration": null,
+    "fidelity": {
+      "level": "screening",
+      "rationale": "Model-form screen before any CFD."
+    }
+  },
+  "title": "Illustrative duct air-flow model-form screen",
+  "uncertainty_sources": [
+    {
+      "category": "epistemic",
+      "description": "Wall roughness unknown",
+      "source_id": "UNC-ROUGHNESS"
+    }
+  ],
+  "validation_evidence": [
+    {
+      "description": "Pressure-drop rig measurement",
+      "evidence_ids": [],
+      "status": "planned",
+      "validation_id": "VAL-RIG-TEST"
+    }
+  ]
+}

@@ -1,0 +1,440 @@
+{
+  "$comment": "Structural schema only. JSON Schema treats 1.0 as an integer and cannot see JSON lexical form; the strict loader rejects every float literal and the parser enforces units, references, bands, digests and pins.",
+  "$id": "https://contrainte.dev/schemas/applicability-rules-0.1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authoring": {
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "^\\S([\\s\\S]*\\S)?$",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "proposed"
+          ]
+        }
+      },
+      "required": [
+        "owner",
+        "status"
+      ],
+      "type": "object"
+    },
+    "citations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "evidence_id": {
+            "pattern": "^(EVD)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "excerpt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "excerpt_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "standard",
+              "source_document",
+              "database_record",
+              "test_record",
+              "engineering_rationale",
+              "synthetic_illustration"
+            ]
+          },
+          "locator": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "retrieved_at": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "revision": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "kind",
+          "title",
+          "authority",
+          "locator",
+          "revision",
+          "retrieved_at",
+          "excerpt",
+          "excerpt_digest"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "group_registry": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "version": {
+          "const": "contrainte.dimensionless-groups/0.1"
+        }
+      },
+      "required": [
+        "version",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "revision": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "pattern": "^\\S([\\s\\S]*\\S)?$",
+      "type": "string"
+    },
+    "rule_set_id": {
+      "pattern": "^(RULESET)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+      "type": "string"
+    },
+    "rules": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bands": {
+            "additionalProperties": false,
+            "properties": {
+              "marginal": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lower": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "inclusive": {
+                              "type": "boolean"
+                            },
+                            "value": {
+                              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "inclusive"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "upper": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "inclusive": {
+                              "type": "boolean"
+                            },
+                            "value": {
+                              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "inclusive"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "lower",
+                    "upper"
+                  ],
+                  "type": "object"
+                },
+                "minItems": 0,
+                "type": "array"
+              },
+              "valid": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lower": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "inclusive": {
+                              "type": "boolean"
+                            },
+                            "value": {
+                              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "inclusive"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "upper": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "inclusive": {
+                              "type": "boolean"
+                            },
+                            "value": {
+                              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "inclusive"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "lower",
+                    "upper"
+                  ],
+                  "type": "object"
+                },
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "valid",
+              "marginal"
+            ],
+            "type": "object"
+          },
+          "citation_ids": {
+            "items": {
+              "pattern": "^(EVD)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "escalation_model_forms": {
+            "items": {
+              "enum": [
+                "euler_bernoulli_beam",
+                "timoshenko_beam",
+                "thin_shell",
+                "continuum_solid",
+                "linear_elastic",
+                "incompressible_flow",
+                "compressible_flow",
+                "laminar_flow",
+                "turbulent_flow",
+                "continuum_flow",
+                "rarefied_flow",
+                "lumped_capacitance_thermal",
+                "distributed_conduction_thermal",
+                "steady_state",
+                "transient_response",
+                "quasi_static"
+              ]
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "group": {
+            "additionalProperties": false,
+            "properties": {
+              "form_id": {
+                "enum": [
+                  "beam_slenderness.effective_squared",
+                  "beam_slenderness.span_to_depth",
+                  "biot.lumped",
+                  "density_variation.relative",
+                  "knudsen.mean_free_path",
+                  "mach.speed_ratio",
+                  "reynolds.dynamic_viscosity",
+                  "reynolds.kinematic_viscosity",
+                  "shell_thickness_ratio.thickness_to_radius",
+                  "time_scale_ratio.response_to_process"
+                ]
+              },
+              "group_id": {
+                "enum": [
+                  "beam_slenderness",
+                  "biot",
+                  "density_variation",
+                  "knudsen",
+                  "mach",
+                  "reynolds",
+                  "shell_thickness_ratio",
+                  "time_scale_ratio"
+                ]
+              }
+            },
+            "required": [
+              "group_id",
+              "form_id"
+            ],
+            "type": "object"
+          },
+          "model_form": {
+            "enum": [
+              "euler_bernoulli_beam",
+              "timoshenko_beam",
+              "thin_shell",
+              "continuum_solid",
+              "linear_elastic",
+              "incompressible_flow",
+              "compressible_flow",
+              "laminar_flow",
+              "turbulent_flow",
+              "continuum_flow",
+              "rarefied_flow",
+              "lumped_capacitance_thermal",
+              "distributed_conduction_thermal",
+              "steady_state",
+              "transient_response",
+              "quasi_static"
+            ]
+          },
+          "on_marginal": {
+            "additionalProperties": false,
+            "properties": {
+              "instruction": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^\\S([\\s\\S]*\\S)?$",
+                "type": "string"
+              },
+              "review_role": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^\\S([\\s\\S]*\\S)?$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "review_role",
+              "instruction"
+            ],
+            "type": "object"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "rule_id": {
+            "pattern": "^(RULE)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "rule_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "rule_version",
+          "title",
+          "model_form",
+          "group",
+          "bands",
+          "rationale",
+          "citation_ids",
+          "on_marginal"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "contrainte.applicability-rules/0.1"
+    },
+    "title": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "pattern": "^\\S([\\s\\S]*\\S)?$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "rule_set_id",
+    "revision",
+    "title",
+    "authoring",
+    "group_registry",
+    "citations",
+    "rules"
+  ],
+  "title": "contrainte.applicability-rules/0.1",
+  "type": "object"
+}

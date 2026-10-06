@@ -227,6 +227,7 @@ The [reference-spatial-assembly contract](docs/REFERENCE_SPATIAL_ASSEMBLIES.md) 
 The [assembly contract](docs/ASSEMBLIES.md) defines exact placement, pairwise verification, artifact reproducibility, and the limits of the current checks.
 The [solid-program contract](docs/SOLID_PROGRAMS.md) defines the exact feature DAG, deterministic boolean semantics, enforced limits, and deliberate topology boundary.
 The [sketch-extrusion contract](docs/SKETCHES.md) defines exact linear constraint solving, profile topology, kernel cross-checks, and deliberate geometric limits.
+The [physics applicability contract](docs/PHYSICS_APPLICABILITY.md) defines versioned physics intent, cited applicability rules over exact unit-checked dimensionless groups (`python -m contrainte.physics`), and its applicability-only boundary: no solver, validation, or qualification claim.
 
 ## Repository policy
 

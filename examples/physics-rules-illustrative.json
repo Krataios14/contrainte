@@ -1,0 +1,447 @@
+{
+  "authoring": {
+    "owner": "Contrainte example authors",
+    "status": "draft"
+  },
+  "citations": [
+    {
+      "authority": "Contrainte example authors",
+      "evidence_id": "EVD-ILLUSTRATIVE-THRESHOLDS",
+      "excerpt": "ILLUSTRATIVE ONLY. Threshold chosen to demonstrate the applicability-rule mechanism; it is not a universal scientific default and has not been reviewed for any intended use.",
+      "excerpt_digest": "sha256:d59d4bdff2c8cea8ef38c86b507d572afa2b3ef01c0ba804d9261c3ac32ad439",
+      "kind": "synthetic_illustration",
+      "locator": "examples/physics-rules-illustrative.json",
+      "retrieved_at": "2026-10-06T00:00:00+00:00",
+      "revision": "1",
+      "title": "Illustrative applicability thresholds"
+    }
+  ],
+  "group_registry": {
+    "digest": "sha256:cf1d611a3bb68912af20d0c5b70ae4dd320add18c1137beb1385c8356c034a91",
+    "version": "contrainte.dimensionless-groups/0.1"
+  },
+  "revision": "1",
+  "rule_set_id": "RULESET-ILLUSTRATIVE-SCREENING",
+  "rules": [
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0.3"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.4"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.3"
+            }
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "compressible_flow"
+      ],
+      "group": {
+        "form_id": "mach.speed_ratio",
+        "group_id": "mach"
+      },
+      "model_form": "incompressible_flow",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Density change driven by flow speed grows with Mach number.",
+      "rule_id": "RULE-MACH-INCOMPRESSIBLE",
+      "rule_version": 1,
+      "title": "Incompressible flow requires low Mach number"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0.05"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.1"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.05"
+            }
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "compressible_flow"
+      ],
+      "group": {
+        "form_id": "density_variation.relative",
+        "group_id": "density_variation"
+      },
+      "model_form": "incompressible_flow",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Thermal or pressure density change also invalidates constant density.",
+      "rule_id": "RULE-DENSITY-VARIATION-INCOMPRESSIBLE",
+      "rule_version": 1,
+      "title": "Incompressible flow requires small density variation"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": false,
+              "value": "2000"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "4000"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0"
+            },
+            "upper": {
+              "inclusive": true,
+              "value": "2000"
+            }
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "turbulent_flow"
+      ],
+      "group": {
+        "form_id": "reynolds.dynamic_viscosity",
+        "group_id": "reynolds"
+      },
+      "model_form": "laminar_flow",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Transition depends on geometry and disturbance level; bands are declared for this rule only.",
+      "rule_id": "RULE-REYNOLDS-LAMINAR",
+      "rule_version": 1,
+      "title": "Laminar flow requires low Reynolds number"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0.01"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.1"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.01"
+            }
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "rarefied_flow"
+      ],
+      "group": {
+        "form_id": "knudsen.mean_free_path",
+        "group_id": "knudsen"
+      },
+      "model_form": "continuum_flow",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Rarefaction effects appear as mean free path approaches the characteristic length.",
+      "rule_id": "RULE-KNUDSEN-CONTINUUM",
+      "rule_version": 1,
+      "title": "Continuum flow requires small Knudsen number"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "10"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "20"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "20"
+            },
+            "upper": null
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "timoshenko_beam",
+        "continuum_solid"
+      ],
+      "group": {
+        "form_id": "beam_slenderness.span_to_depth",
+        "group_id": "beam_slenderness"
+      },
+      "model_form": "euler_bernoulli_beam",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Shear deformation and local stress matter for stocky beams.",
+      "rule_id": "RULE-BEAM-SPAN-DEPTH",
+      "rule_version": 1,
+      "title": "Euler-Bernoulli beam requires slender span-to-depth ratio"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "3600"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "10000"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "10000"
+            },
+            "upper": null
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "continuum_solid"
+      ],
+      "group": {
+        "form_id": "beam_slenderness.effective_squared",
+        "group_id": "beam_slenderness"
+      },
+      "model_form": "euler_bernoulli_beam",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Exact squared slenderness avoids an irrational radius of gyration.",
+      "rule_id": "RULE-COLUMN-SLENDERNESS",
+      "rule_version": 1,
+      "title": "Elastic column idealisation requires slenderness squared above a limit"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0.1"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.15"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.1"
+            }
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "distributed_conduction_thermal"
+      ],
+      "group": {
+        "form_id": "biot.lumped",
+        "group_id": "biot"
+      },
+      "model_form": "lumped_capacitance_thermal",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Internal conduction resistance must be small against surface resistance.",
+      "rule_id": "RULE-BIOT-LUMPED",
+      "rule_version": 1,
+      "title": "Lumped capacitance requires small Biot number"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": true,
+              "value": "0.1"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.5"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": false,
+              "value": "0"
+            },
+            "upper": {
+              "inclusive": false,
+              "value": "0.1"
+            }
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "transient_response"
+      ],
+      "group": {
+        "form_id": "time_scale_ratio.response_to_process",
+        "group_id": "time_scale_ratio"
+      },
+      "model_form": "steady_state",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Process and response time scales must separate.",
+      "rule_id": "RULE-STEADY-TIME-SCALE",
+      "rule_version": 1,
+      "title": "Steady-state analysis requires fast response relative to process"
+    },
+    {
+      "bands": {
+        "marginal": [
+          {
+            "lower": {
+              "inclusive": false,
+              "value": "0.05"
+            },
+            "upper": {
+              "inclusive": true,
+              "value": "0.1"
+            }
+          }
+        ],
+        "valid": [
+          {
+            "lower": {
+              "inclusive": false,
+              "value": "0"
+            },
+            "upper": {
+              "inclusive": true,
+              "value": "0.05"
+            }
+          }
+        ]
+      },
+      "citation_ids": [
+        "EVD-ILLUSTRATIVE-THRESHOLDS"
+      ],
+      "escalation_model_forms": [
+        "continuum_solid"
+      ],
+      "group": {
+        "form_id": "shell_thickness_ratio.thickness_to_radius",
+        "group_id": "shell_thickness_ratio"
+      },
+      "model_form": "thin_shell",
+      "on_marginal": {
+        "instruction": "Confirm the simpler model form remains adequate for the target outputs or escalate.",
+        "review_role": "independent_physics_reviewer"
+      },
+      "rationale": "Through-thickness effects grow with thickness ratio.",
+      "rule_id": "RULE-THIN-SHELL",
+      "rule_version": 1,
+      "title": "Thin-shell theory requires small thickness-to-radius ratio"
+    }
+  ],
+  "schema_version": "contrainte.applicability-rules/0.1",
+  "title": "Illustrative screening applicability rules (synthetic thresholds, not for engineering use)"
+}

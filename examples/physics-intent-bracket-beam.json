@@ -1,0 +1,352 @@
+{
+  "acceptance": {
+    "criteria": [
+      {
+        "comparator": "le",
+        "criterion_id": "ACC-TIP-DEFLECTION",
+        "limit": {
+          "kind": "length",
+          "unit": "mm",
+          "value": "2"
+        },
+        "output_id": "QOI-TIP-DEFLECTION",
+        "rationale": "Illustrative stiffness requirement."
+      }
+    ],
+    "kind": "criteria"
+  },
+  "assumptions": [
+    {
+      "assumption_id": "ASM-EXAMPLE-VALUES",
+      "critical": false,
+      "impact": "No engineering conclusion may be drawn from these values.",
+      "owner": "Contrainte example authors",
+      "rationale": "Demonstrates the intent and applicability mechanism only.",
+      "statement": "Example values stand in for project data.",
+      "status": "open",
+      "verification_plan": "Replace with measured or supplier-declared values before any controlled use."
+    }
+  ],
+  "boundary_conditions": [
+    {
+      "applies_to": "FEA-BRACKET-ARM",
+      "bc_id": "BC-ROOT",
+      "description": "Bolted root",
+      "kind": "fixed"
+    },
+    {
+      "applies_to": "FEA-BRACKET-ARM",
+      "bc_id": "BC-FILM",
+      "description": "Free convection",
+      "kind": "convection"
+    }
+  ],
+  "candidate_model_forms": [
+    "euler_bernoulli_beam",
+    "lumped_capacitance_thermal",
+    "steady_state"
+  ],
+  "criticality": "critical",
+  "decision": {
+    "owner": "Example structures engineer",
+    "requirement_ids": [
+      "REQ-TIP-DEFLECTION"
+    ],
+    "statement": "Decide whether a beam idealisation is adequate for bracket tip deflection."
+  },
+  "domains": [
+    "analytical_solid_mechanics_screen",
+    "steady_heat_conduction"
+  ],
+  "environment": {
+    "conditions": [],
+    "description": "Indoor service",
+    "state_id": "ENV-SERVICE"
+  },
+  "evidence": [
+    {
+      "content_digest": "sha256:9ec5ad063b7ce7f5c50553ab8c3950429795ed1b7e15377bee3faae769e1d928",
+      "evidence_id": "EVD-EXAMPLE-INPUTS",
+      "kind": "synthetic_illustration",
+      "locator": "examples (synthetic)",
+      "title": "Illustrative input values"
+    }
+  ],
+  "failure_modes": [
+    {
+      "description": "Tip deflection exceeds limit",
+      "failure_mode_id": "FM-EXCESS-DEFLECTION"
+    }
+  ],
+  "geometry": {
+    "excluded": [
+      {
+        "reason": "Represented by a fixed support.",
+        "ref_id": "FEA-BOLTS"
+      }
+    ],
+    "modeled": [
+      {
+        "description": "Cantilever arm",
+        "ref_id": "FEA-BRACKET-ARM",
+        "role": "body",
+        "source_digest": null
+      }
+    ],
+    "simplifications": []
+  },
+  "group_declarations": [
+    {
+      "bindings": {
+        "section_depth": "SCL-DEPTH",
+        "span_length": "SCL-SPAN"
+      },
+      "declaration_id": "GRP-SPAN-DEPTH",
+      "form_id": "beam_slenderness.span_to_depth",
+      "group_id": "beam_slenderness"
+    },
+    {
+      "bindings": {
+        "characteristic_length": "SCL-THERMAL-LENGTH",
+        "heat_transfer_coefficient": "SCL-FILM-COEFFICIENT",
+        "thermal_conductivity": "SCL-CONDUCTIVITY"
+      },
+      "declaration_id": "GRP-BIOT",
+      "form_id": "biot.lumped",
+      "group_id": "biot"
+    },
+    {
+      "bindings": {
+        "process_time": "SCL-PROCESS-TIME",
+        "response_time": "SCL-RESPONSE-TIME"
+      },
+      "declaration_id": "GRP-TIME-SCALE",
+      "form_id": "time_scale_ratio.response_to_process",
+      "group_id": "time_scale_ratio"
+    }
+  ],
+  "initial_conditions": {
+    "conditions": [],
+    "rationale": "Steady screen.",
+    "relevance": "not_relevant"
+  },
+  "intent_id": "PHY-BRACKET-BEAM-SCREEN",
+  "interfaces": [],
+  "loads": [
+    {
+      "applies_to": "FEA-BRACKET-ARM",
+      "description": "Static tip load",
+      "kind": "force",
+      "load_id": "LOAD-TIP",
+      "magnitude": {
+        "kind": "force",
+        "unit": "kN",
+        "value": "1.5"
+      }
+    }
+  ],
+  "materials": [
+    {
+      "applies_to": [
+        "FEA-BRACKET-ARM"
+      ],
+      "material_ref": "MAT-STEEL",
+      "model_requirement": "linear_elastic_isotropic",
+      "record_digest": null
+    }
+  ],
+  "model_form_alternatives": [
+    {
+      "disposition": "selected",
+      "model_form": "euler_bernoulli_beam",
+      "rationale": "Simplest screen."
+    },
+    {
+      "disposition": "deferred",
+      "model_form": "timoshenko_beam",
+      "rationale": "Use if slenderness is low."
+    },
+    {
+      "disposition": "deferred",
+      "model_form": "continuum_solid",
+      "rationale": "Use for local stress."
+    }
+  ],
+  "nonlinearities": [
+    {
+      "description": "Small deflection expected.",
+      "kind": "none_expected"
+    }
+  ],
+  "requested_mode": "controlled",
+  "revision": "A",
+  "rule_set_pin": {
+    "digest": "sha256:e0d129198ede47d8dc9148bf6827e2562a5be9f4f46d45ae561ef53bc59a244f",
+    "revision": "1",
+    "rule_set_id": "RULESET-ILLUSTRATIVE-SCREENING"
+  },
+  "scales": [
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Cantilever span",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "length",
+        "unit": "mm",
+        "value": "300"
+      },
+      "scale_id": "SCL-SPAN"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Section depth",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "length",
+        "unit": "mm",
+        "value": "40"
+      },
+      "scale_id": "SCL-DEPTH"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Convective film coefficient",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "heat_transfer_coefficient",
+        "unit": "W/(m2.K)",
+        "value": "25"
+      },
+      "scale_id": "SCL-FILM-COEFFICIENT"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Volume-to-surface characteristic length",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "length",
+        "unit": "mm",
+        "value": "5"
+      },
+      "scale_id": "SCL-THERMAL-LENGTH"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Thermal conductivity of steel",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "thermal_conductivity",
+        "unit": "W/(m.K)",
+        "value": "50"
+      },
+      "scale_id": "SCL-CONDUCTIVITY"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Structural response time",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "time",
+        "unit": "s",
+        "value": "2"
+      },
+      "scale_id": "SCL-RESPONSE-TIME"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Load application time",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "time",
+        "unit": "h",
+        "value": "1"
+      },
+      "scale_id": "SCL-PROCESS-TIME"
+    },
+    {
+      "assumption_ids": [
+        "ASM-EXAMPLE-VALUES"
+      ],
+      "basis": "assumed",
+      "description": "Tip service load",
+      "evidence_ids": [
+        "EVD-EXAMPLE-INPUTS"
+      ],
+      "quantity": {
+        "kind": "force",
+        "unit": "kN",
+        "value": "1.5"
+      },
+      "scale_id": "SCL-SERVICE-LOAD"
+    }
+  ],
+  "schema_version": "contrainte.physics-intent/0.1",
+  "target_outputs": [
+    {
+      "description": "Tip deflection under service load",
+      "kind": "length",
+      "location_ref": "FEA-BRACKET-ARM",
+      "output_id": "QOI-TIP-DEFLECTION",
+      "unit": "mm"
+    }
+  ],
+  "time": {
+    "character": "steady",
+    "duration": null,
+    "fidelity": {
+      "level": "screening",
+      "rationale": "Analytical screen."
+    }
+  },
+  "title": "Illustrative heated cantilever bracket model-form screen",
+  "uncertainty_sources": [
+    {
+      "category": "model_form",
+      "description": "Bolted root is not perfectly fixed",
+      "source_id": "UNC-ROOT-STIFFNESS"
+    }
+  ],
+  "validation_evidence": [
+    {
+      "description": "Static deflection test",
+      "evidence_ids": [],
+      "status": "planned",
+      "validation_id": "VAL-DEFLECTION-TEST"
+    }
+  ]
+}

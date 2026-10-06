@@ -1,0 +1,905 @@
+{
+  "$comment": "Structural schema only. JSON Schema treats 1.0 as an integer and cannot see JSON lexical form; the strict loader rejects every float literal and the parser enforces units, references, bands, digests and pins.",
+  "$id": "https://contrainte.dev/schemas/physics-applicability-report-0.1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "applicability_state": {
+      "enum": [
+        "rules_satisfied",
+        "marginal_review_required",
+        "indeterminate",
+        "rules_violated"
+      ]
+    },
+    "authority": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_authority": {
+          "const": false
+        },
+        "control_authority": {
+          "const": false
+        },
+        "human_review_required": {
+          "const": true
+        },
+        "release_authority": {
+          "const": false
+        },
+        "write_authority": {
+          "const": false
+        }
+      },
+      "required": [
+        "release_authority",
+        "approval_authority",
+        "write_authority",
+        "control_authority",
+        "human_review_required"
+      ],
+      "type": "object"
+    },
+    "authority_promotion_permitted": {
+      "const": false
+    },
+    "claim_boundary": {
+      "type": "string"
+    },
+    "controlled_review_readiness": {
+      "additionalProperties": false,
+      "properties": {
+        "blockers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "subject"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "state": {
+          "enum": [
+            "blocked",
+            "ready_for_independent_review"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "blockers"
+      ],
+      "type": "object"
+    },
+    "groups": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "declaration_id": {
+            "pattern": "^(GRP)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "form_id": {
+            "enum": [
+              "beam_slenderness.effective_squared",
+              "beam_slenderness.span_to_depth",
+              "biot.lumped",
+              "density_variation.relative",
+              "knudsen.mean_free_path",
+              "mach.speed_ratio",
+              "reynolds.dynamic_viscosity",
+              "reynolds.kinematic_viscosity",
+              "shell_thickness_ratio.thickness_to_radius",
+              "time_scale_ratio.response_to_process"
+            ]
+          },
+          "group_id": {
+            "enum": [
+              "beam_slenderness",
+              "biot",
+              "density_variation",
+              "knudsen",
+              "mach",
+              "reynolds",
+              "shell_thickness_ratio",
+              "time_scale_ratio"
+            ]
+          },
+          "inputs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "basis": {
+                  "enum": [
+                    "observed",
+                    "measured",
+                    "supplier_declared",
+                    "standard_specified",
+                    "computed",
+                    "critically_evaluated",
+                    "predicted",
+                    "inferred",
+                    "assumed",
+                    "ai_proposed"
+                  ]
+                },
+                "exponent": {
+                  "type": "integer"
+                },
+                "quantity": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "absolute_pressure",
+                        "area",
+                        "density",
+                        "dimensionless",
+                        "dynamic_viscosity",
+                        "force",
+                        "frequency",
+                        "gauge_pressure",
+                        "heat_flux",
+                        "heat_transfer_coefficient",
+                        "kinematic_viscosity",
+                        "length",
+                        "mass",
+                        "second_moment_of_area",
+                        "strain",
+                        "stress",
+                        "temperature_difference",
+                        "thermal_conductivity",
+                        "thermodynamic_temperature",
+                        "time",
+                        "velocity"
+                      ]
+                    },
+                    "unit": {
+                      "enum": [
+                        "1",
+                        "GPa",
+                        "Hz",
+                        "K",
+                        "MPa",
+                        "N",
+                        "Pa",
+                        "Pa.s",
+                        "W/(m.K)",
+                        "W/(m2.K)",
+                        "W/m2",
+                        "bar",
+                        "cm",
+                        "cm2",
+                        "cm4",
+                        "g",
+                        "g/cm3",
+                        "h",
+                        "kN",
+                        "kPa",
+                        "kg",
+                        "kg/m3",
+                        "km",
+                        "km/h",
+                        "m",
+                        "m/s",
+                        "m2",
+                        "m2/s",
+                        "m4",
+                        "mPa.s",
+                        "min",
+                        "mm",
+                        "mm/s",
+                        "mm2",
+                        "mm2/s",
+                        "mm4",
+                        "ms",
+                        "nm",
+                        "s",
+                        "um"
+                      ]
+                    },
+                    "value": {
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "unit",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "scale_id": {
+                  "pattern": "^(SCL)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                  "type": "string"
+                },
+                "si_value": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "decimal": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "rational": {
+                      "pattern": "^-?[0-9]+(/[1-9][0-9]*)?$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rational",
+                    "decimal"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "role",
+                "exponent",
+                "scale_id",
+                "basis",
+                "quantity",
+                "si_value"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "value": {
+            "additionalProperties": false,
+            "properties": {
+              "decimal": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                    "type": "string"
+                  }
+                ]
+              },
+              "rational": {
+                "pattern": "^-?[0-9]+(/[1-9][0-9]*)?$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "rational",
+              "decimal"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "declaration_id",
+          "group_id",
+          "form_id",
+          "symbol",
+          "expression",
+          "inputs",
+          "value"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "inputs": {
+      "additionalProperties": false,
+      "properties": {
+        "intent": {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "intent_id": {
+              "pattern": "^(PHY)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "revision": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "pattern": "^\\S([\\s\\S]*\\S)?$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent_id",
+            "revision",
+            "digest"
+          ],
+          "type": "object"
+        },
+        "rule_set": {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "revision": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "pattern": "^\\S([\\s\\S]*\\S)?$",
+              "type": "string"
+            },
+            "rule_set_id": {
+              "pattern": "^(RULESET)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "rule_set_id",
+            "revision",
+            "digest"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "intent",
+        "rule_set"
+      ],
+      "type": "object"
+    },
+    "kernel": {
+      "additionalProperties": false,
+      "properties": {
+        "group_registry": {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "version": {
+              "const": "contrainte.dimensionless-groups/0.1"
+            }
+          },
+          "required": [
+            "version",
+            "digest"
+          ],
+          "type": "object"
+        },
+        "package": {
+          "const": "contrainte.physics"
+        }
+      },
+      "required": [
+        "package",
+        "group_registry"
+      ],
+      "type": "object"
+    },
+    "model_form_outcomes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "model_form": {
+            "enum": [
+              "euler_bernoulli_beam",
+              "timoshenko_beam",
+              "thin_shell",
+              "continuum_solid",
+              "linear_elastic",
+              "incompressible_flow",
+              "compressible_flow",
+              "laminar_flow",
+              "turbulent_flow",
+              "continuum_flow",
+              "rarefied_flow",
+              "lumped_capacitance_thermal",
+              "distributed_conduction_thermal",
+              "steady_state",
+              "transient_response",
+              "quasi_static"
+            ]
+          },
+          "rule_ids": {
+            "items": {
+              "pattern": "^(RULE)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minItems": 0,
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "applicable",
+              "marginal",
+              "violated",
+              "indeterminate",
+              "no_rule"
+            ]
+          }
+        },
+        "required": [
+          "model_form",
+          "state",
+          "rule_ids"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "output_basis": {
+      "const": "computed_from_declared_inputs"
+    },
+    "output_label": {
+      "enum": [
+        "exploratory",
+        "non_release"
+      ]
+    },
+    "qualification_level": {
+      "const": "none"
+    },
+    "qualified_execution": {
+      "additionalProperties": false,
+      "properties": {
+        "blockers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "subject"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "permitted": {
+          "const": false
+        }
+      },
+      "required": [
+        "permitted",
+        "blockers"
+      ],
+      "type": "object"
+    },
+    "report_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "requested_mode": {
+      "enum": [
+        "exploration",
+        "controlled",
+        "qualified"
+      ]
+    },
+    "review_tasks": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "declaration_id": {
+            "pattern": "^(GRP)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "kind": {
+            "const": "marginal_applicability_review"
+          },
+          "review_role": {
+            "type": "string"
+          },
+          "rule_id": {
+            "pattern": "^(RULE)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "status": {
+            "const": "open"
+          },
+          "task_id": {
+            "pattern": "^RVW-[1-9][0-9]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "kind",
+          "rule_id",
+          "declaration_id",
+          "review_role",
+          "status"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "rule_outcomes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "citation_ids": {
+            "items": {
+              "pattern": "^(EVD)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "declaration_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^(GRP)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                "type": "string"
+              }
+            ]
+          },
+          "escalation_model_forms": {
+            "items": {
+              "enum": [
+                "euler_bernoulli_beam",
+                "timoshenko_beam",
+                "thin_shell",
+                "continuum_solid",
+                "linear_elastic",
+                "incompressible_flow",
+                "compressible_flow",
+                "laminar_flow",
+                "turbulent_flow",
+                "continuum_flow",
+                "rarefied_flow",
+                "lumped_capacitance_thermal",
+                "distributed_conduction_thermal",
+                "steady_state",
+                "transient_response",
+                "quasi_static"
+              ]
+            },
+            "minItems": 0,
+            "type": "array"
+          },
+          "form_id": {
+            "enum": [
+              "beam_slenderness.effective_squared",
+              "beam_slenderness.span_to_depth",
+              "biot.lumped",
+              "density_variation.relative",
+              "knudsen.mean_free_path",
+              "mach.speed_ratio",
+              "reynolds.dynamic_viscosity",
+              "reynolds.kinematic_viscosity",
+              "shell_thickness_ratio.thickness_to_radius",
+              "time_scale_ratio.response_to_process"
+            ]
+          },
+          "group_id": {
+            "enum": [
+              "beam_slenderness",
+              "biot",
+              "density_variation",
+              "knudsen",
+              "mach",
+              "reynolds",
+              "shell_thickness_ratio",
+              "time_scale_ratio"
+            ]
+          },
+          "matched_band": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "band": {
+                    "enum": [
+                      "valid",
+                      "marginal"
+                    ]
+                  },
+                  "interval": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "lower": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "inclusive": {
+                                "type": "boolean"
+                              },
+                              "value": {
+                                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "inclusive"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "upper": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "inclusive": {
+                                "type": "boolean"
+                              },
+                              "value": {
+                                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "inclusive"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "lower",
+                      "upper"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "band",
+                  "interval"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "model_form": {
+            "enum": [
+              "euler_bernoulli_beam",
+              "timoshenko_beam",
+              "thin_shell",
+              "continuum_solid",
+              "linear_elastic",
+              "incompressible_flow",
+              "compressible_flow",
+              "laminar_flow",
+              "turbulent_flow",
+              "continuum_flow",
+              "rarefied_flow",
+              "lumped_capacitance_thermal",
+              "distributed_conduction_thermal",
+              "steady_state",
+              "transient_response",
+              "quasi_static"
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "valid",
+              "marginal",
+              "violated",
+              "indeterminate",
+              "not_selected"
+            ]
+          },
+          "reason": {
+            "enum": [
+              null,
+              "group_not_declared",
+              "model_form_not_candidate"
+            ]
+          },
+          "rule_id": {
+            "pattern": "^(RULE)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "rule_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "decimal": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "rational": {
+                    "pattern": "^-?[0-9]+(/[1-9][0-9]*)?$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rational",
+                  "decimal"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "rule_id",
+          "rule_version",
+          "model_form",
+          "group_id",
+          "form_id",
+          "citation_ids",
+          "escalation_model_forms",
+          "declaration_id",
+          "outcome",
+          "reason",
+          "value",
+          "matched_band"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "contrainte.physics-applicability-report/0.1"
+    },
+    "unsupported": {
+      "additionalProperties": false,
+      "properties": {
+        "declared_domains_without_execution": {
+          "items": {
+            "enum": [
+              "analytical_solid_mechanics_screen",
+              "linear_static_solid_mechanics",
+              "modal",
+              "transient_structural_dynamics",
+              "contact_mechanics",
+              "geometric_nonlinearity",
+              "material_nonlinearity",
+              "fracture_mechanics",
+              "fatigue_durability",
+              "steady_heat_conduction",
+              "transient_heat_transfer",
+              "convection_radiation_boundary",
+              "incompressible_flow",
+              "compressible_flow",
+              "laminar_turbulence",
+              "species_transport",
+              "particle_transport",
+              "conjugate_heat_transfer",
+              "fluid_structure_interaction",
+              "thermo_mechanical_coupling",
+              "electromagnetics",
+              "acoustics",
+              "chemical_reaction_networks",
+              "population_balance"
+            ]
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "execution_available_domains": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "kernel_scope": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "declared_domains_without_execution",
+        "execution_available_domains",
+        "kernel_scope"
+      ],
+      "type": "object"
+    },
+    "warnings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "subject",
+          "message"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kernel",
+    "inputs",
+    "requested_mode",
+    "output_label",
+    "groups",
+    "rule_outcomes",
+    "model_form_outcomes",
+    "applicability_state",
+    "warnings",
+    "review_tasks",
+    "qualified_execution",
+    "controlled_review_readiness",
+    "authority_promotion_permitted",
+    "authority",
+    "qualification_level",
+    "output_basis",
+    "claim_boundary",
+    "unsupported",
+    "report_digest"
+  ],
+  "title": "contrainte.physics-applicability-report/0.1",
+  "type": "object"
+}

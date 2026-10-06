@@ -1,0 +1,1523 @@
+{
+  "$comment": "Structural schema only. JSON Schema treats 1.0 as an integer and cannot see JSON lexical form; the strict loader rejects every float literal and the parser enforces units, references, bands, digests and pins.",
+  "$id": "https://contrainte.dev/schemas/physics-intent-0.1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "acceptance": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "exploratory"
+            },
+            "rationale": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "pattern": "^\\S([\\s\\S]*\\S)?$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "rationale"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "criteria": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "comparator": {
+                    "enum": [
+                      "lt",
+                      "le",
+                      "gt",
+                      "ge"
+                    ]
+                  },
+                  "criterion_id": {
+                    "pattern": "^(ACC)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "absolute_pressure",
+                          "area",
+                          "density",
+                          "dimensionless",
+                          "dynamic_viscosity",
+                          "force",
+                          "frequency",
+                          "gauge_pressure",
+                          "heat_flux",
+                          "heat_transfer_coefficient",
+                          "kinematic_viscosity",
+                          "length",
+                          "mass",
+                          "second_moment_of_area",
+                          "strain",
+                          "stress",
+                          "temperature_difference",
+                          "thermal_conductivity",
+                          "thermodynamic_temperature",
+                          "time",
+                          "velocity"
+                        ]
+                      },
+                      "unit": {
+                        "enum": [
+                          "1",
+                          "GPa",
+                          "Hz",
+                          "K",
+                          "MPa",
+                          "N",
+                          "Pa",
+                          "Pa.s",
+                          "W/(m.K)",
+                          "W/(m2.K)",
+                          "W/m2",
+                          "bar",
+                          "cm",
+                          "cm2",
+                          "cm4",
+                          "g",
+                          "g/cm3",
+                          "h",
+                          "kN",
+                          "kPa",
+                          "kg",
+                          "kg/m3",
+                          "km",
+                          "km/h",
+                          "m",
+                          "m/s",
+                          "m2",
+                          "m2/s",
+                          "m4",
+                          "mPa.s",
+                          "min",
+                          "mm",
+                          "mm/s",
+                          "mm2",
+                          "mm2/s",
+                          "mm4",
+                          "ms",
+                          "nm",
+                          "s",
+                          "um"
+                        ]
+                      },
+                      "value": {
+                        "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "unit",
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "output_id": {
+                    "pattern": "^(QOI)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "pattern": "^\\S([\\s\\S]*\\S)?$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "criterion_id",
+                  "output_id",
+                  "comparator",
+                  "limit",
+                  "rationale"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "kind": {
+              "const": "criteria"
+            }
+          },
+          "required": [
+            "kind",
+            "criteria"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "assumptions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "assumption_id": {
+            "pattern": "^(ASM)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "critical": {
+            "type": "boolean"
+          },
+          "impact": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "owner": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "statement": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "retired"
+            ]
+          },
+          "verification_plan": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assumption_id",
+          "statement",
+          "owner",
+          "rationale",
+          "impact",
+          "verification_plan",
+          "status",
+          "critical"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "boundary_conditions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "applies_to": {
+            "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "bc_id": {
+            "pattern": "^(BC)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "fixed",
+              "symmetry",
+              "prescribed_displacement",
+              "prescribed_temperature",
+              "convection",
+              "heat_flux",
+              "inlet",
+              "outlet",
+              "wall",
+              "free_surface"
+            ]
+          }
+        },
+        "required": [
+          "bc_id",
+          "kind",
+          "applies_to",
+          "description"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "candidate_model_forms": {
+      "items": {
+        "enum": [
+          "euler_bernoulli_beam",
+          "timoshenko_beam",
+          "thin_shell",
+          "continuum_solid",
+          "linear_elastic",
+          "incompressible_flow",
+          "compressible_flow",
+          "laminar_flow",
+          "turbulent_flow",
+          "continuum_flow",
+          "rarefied_flow",
+          "lumped_capacitance_thermal",
+          "distributed_conduction_thermal",
+          "steady_state",
+          "transient_response",
+          "quasi_static"
+        ]
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "criticality": {
+      "enum": [
+        "critical",
+        "non_critical"
+      ]
+    },
+    "decision": {
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "^\\S([\\s\\S]*\\S)?$",
+          "type": "string"
+        },
+        "requirement_ids": {
+          "items": {
+            "pattern": "^(REQ)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "statement": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "^\\S([\\s\\S]*\\S)?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "statement",
+        "owner",
+        "requirement_ids"
+      ],
+      "type": "object"
+    },
+    "domains": {
+      "items": {
+        "enum": [
+          "analytical_solid_mechanics_screen",
+          "linear_static_solid_mechanics",
+          "modal",
+          "transient_structural_dynamics",
+          "contact_mechanics",
+          "geometric_nonlinearity",
+          "material_nonlinearity",
+          "fracture_mechanics",
+          "fatigue_durability",
+          "steady_heat_conduction",
+          "transient_heat_transfer",
+          "convection_radiation_boundary",
+          "incompressible_flow",
+          "compressible_flow",
+          "laminar_turbulence",
+          "species_transport",
+          "particle_transport",
+          "conjugate_heat_transfer",
+          "fluid_structure_interaction",
+          "thermo_mechanical_coupling",
+          "electromagnetics",
+          "acoustics",
+          "chemical_reaction_networks",
+          "population_balance"
+        ]
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "environment": {
+      "additionalProperties": false,
+      "properties": {
+        "conditions": {
+          "items": {
+            "pattern": "^(SCL)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "description": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "^\\S([\\s\\S]*\\S)?$",
+          "type": "string"
+        },
+        "state_id": {
+          "pattern": "^(ENV)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state_id",
+        "description",
+        "conditions"
+      ],
+      "type": "object"
+    },
+    "evidence": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "content_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "evidence_id": {
+            "pattern": "^(EVD)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "measurement_record",
+              "source_document",
+              "standard",
+              "database_record",
+              "test_record",
+              "solver_result",
+              "human_rationale",
+              "synthetic_illustration"
+            ]
+          },
+          "locator": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "kind",
+          "title",
+          "locator",
+          "content_digest"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "failure_modes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "failure_mode_id": {
+            "pattern": "^(FM)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "failure_mode_id",
+          "description"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "geometry": {
+      "additionalProperties": false,
+      "properties": {
+        "excluded": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^\\S([\\s\\S]*\\S)?$",
+                "type": "string"
+              },
+              "ref_id": {
+                "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "ref_id",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "modeled": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^\\S([\\s\\S]*\\S)?$",
+                "type": "string"
+              },
+              "ref_id": {
+                "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                "type": "string"
+              },
+              "role": {
+                "enum": [
+                  "body",
+                  "region",
+                  "surface"
+                ]
+              },
+              "source_digest": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "ref_id",
+              "role",
+              "description",
+              "source_digest"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "simplifications": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^\\S([\\s\\S]*\\S)?$",
+                "type": "string"
+              },
+              "rationale": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^\\S([\\s\\S]*\\S)?$",
+                "type": "string"
+              },
+              "simplification_id": {
+                "pattern": "^(SIM)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "simplification_id",
+              "description",
+              "rationale"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array"
+        }
+      },
+      "required": [
+        "modeled",
+        "excluded",
+        "simplifications"
+      ],
+      "type": "object"
+    },
+    "group_declarations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bindings": {
+            "additionalProperties": {
+              "pattern": "^(SCL)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minProperties": 1,
+            "type": "object"
+          },
+          "declaration_id": {
+            "pattern": "^(GRP)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "form_id": {
+            "enum": [
+              "beam_slenderness.effective_squared",
+              "beam_slenderness.span_to_depth",
+              "biot.lumped",
+              "density_variation.relative",
+              "knudsen.mean_free_path",
+              "mach.speed_ratio",
+              "reynolds.dynamic_viscosity",
+              "reynolds.kinematic_viscosity",
+              "shell_thickness_ratio.thickness_to_radius",
+              "time_scale_ratio.response_to_process"
+            ]
+          },
+          "group_id": {
+            "enum": [
+              "beam_slenderness",
+              "biot",
+              "density_variation",
+              "knudsen",
+              "mach",
+              "reynolds",
+              "shell_thickness_ratio",
+              "time_scale_ratio"
+            ]
+          }
+        },
+        "required": [
+          "declaration_id",
+          "group_id",
+          "form_id",
+          "bindings"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "initial_conditions": {
+      "additionalProperties": false,
+      "properties": {
+        "conditions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "applies_to": {
+                "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                "type": "string"
+              },
+              "description": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^\\S([\\s\\S]*\\S)?$",
+                "type": "string"
+              },
+              "ic_id": {
+                "pattern": "^(IC)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "ic_id",
+              "description",
+              "applies_to"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "^\\S([\\s\\S]*\\S)?$",
+          "type": "string"
+        },
+        "relevance": {
+          "enum": [
+            "not_relevant",
+            "specified"
+          ]
+        }
+      },
+      "required": [
+        "relevance",
+        "rationale",
+        "conditions"
+      ],
+      "type": "object"
+    },
+    "intent_id": {
+      "pattern": "^(PHY)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+      "type": "string"
+    },
+    "interfaces": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "between": {
+            "items": {
+              "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "coupling": {
+            "enum": [
+              "none",
+              "one_way",
+              "two_way"
+            ]
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "interface_id": {
+            "pattern": "^(IFC)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interface_id",
+          "between",
+          "coupling",
+          "description"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "loads": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "applies_to": {
+            "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "force",
+              "pressure",
+              "thermal",
+              "inertial",
+              "flow",
+              "heat_flux"
+            ]
+          },
+          "load_id": {
+            "pattern": "^(LOAD)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "magnitude": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "absolute_pressure",
+                  "area",
+                  "density",
+                  "dimensionless",
+                  "dynamic_viscosity",
+                  "force",
+                  "frequency",
+                  "gauge_pressure",
+                  "heat_flux",
+                  "heat_transfer_coefficient",
+                  "kinematic_viscosity",
+                  "length",
+                  "mass",
+                  "second_moment_of_area",
+                  "strain",
+                  "stress",
+                  "temperature_difference",
+                  "thermal_conductivity",
+                  "thermodynamic_temperature",
+                  "time",
+                  "velocity"
+                ]
+              },
+              "unit": {
+                "enum": [
+                  "1",
+                  "GPa",
+                  "Hz",
+                  "K",
+                  "MPa",
+                  "N",
+                  "Pa",
+                  "Pa.s",
+                  "W/(m.K)",
+                  "W/(m2.K)",
+                  "W/m2",
+                  "bar",
+                  "cm",
+                  "cm2",
+                  "cm4",
+                  "g",
+                  "g/cm3",
+                  "h",
+                  "kN",
+                  "kPa",
+                  "kg",
+                  "kg/m3",
+                  "km",
+                  "km/h",
+                  "m",
+                  "m/s",
+                  "m2",
+                  "m2/s",
+                  "m4",
+                  "mPa.s",
+                  "min",
+                  "mm",
+                  "mm/s",
+                  "mm2",
+                  "mm2/s",
+                  "mm4",
+                  "ms",
+                  "nm",
+                  "s",
+                  "um"
+                ]
+              },
+              "value": {
+                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "unit",
+              "kind"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "load_id",
+          "kind",
+          "applies_to",
+          "magnitude",
+          "description"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "materials": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "applies_to": {
+            "items": {
+              "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "material_ref": {
+            "pattern": "^(MAT)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "model_requirement": {
+            "enum": [
+              "linear_elastic_isotropic",
+              "linear_elastic_anisotropic",
+              "elastoplastic",
+              "hyperelastic",
+              "viscoelastic",
+              "newtonian_fluid",
+              "non_newtonian_fluid",
+              "constant_thermal_properties",
+              "temperature_dependent_thermal_properties"
+            ]
+          },
+          "record_digest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "material_ref",
+          "model_requirement",
+          "record_digest",
+          "applies_to"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "model_form_alternatives": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "disposition": {
+            "enum": [
+              "selected",
+              "rejected",
+              "deferred"
+            ]
+          },
+          "model_form": {
+            "enum": [
+              "euler_bernoulli_beam",
+              "timoshenko_beam",
+              "thin_shell",
+              "continuum_solid",
+              "linear_elastic",
+              "incompressible_flow",
+              "compressible_flow",
+              "laminar_flow",
+              "turbulent_flow",
+              "continuum_flow",
+              "rarefied_flow",
+              "lumped_capacitance_thermal",
+              "distributed_conduction_thermal",
+              "steady_state",
+              "transient_response",
+              "quasi_static"
+            ]
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_form",
+          "disposition",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "nonlinearities": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "none_expected",
+              "geometric",
+              "material",
+              "contact",
+              "boundary"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "description"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "requested_mode": {
+      "enum": [
+        "exploration",
+        "controlled",
+        "qualified"
+      ]
+    },
+    "revision": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "pattern": "^\\S([\\s\\S]*\\S)?$",
+      "type": "string"
+    },
+    "rule_set_pin": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "revision": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "^\\S([\\s\\S]*\\S)?$",
+          "type": "string"
+        },
+        "rule_set_id": {
+          "pattern": "^(RULESET)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_set_id",
+        "revision",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "scales": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "assumption_ids": {
+            "items": {
+              "pattern": "^(ASM)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "basis": {
+            "enum": [
+              "observed",
+              "measured",
+              "supplier_declared",
+              "standard_specified",
+              "computed",
+              "critically_evaluated",
+              "predicted",
+              "inferred",
+              "assumed",
+              "ai_proposed"
+            ]
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "pattern": "^(EVD)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "quantity": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "absolute_pressure",
+                  "area",
+                  "density",
+                  "dimensionless",
+                  "dynamic_viscosity",
+                  "force",
+                  "frequency",
+                  "gauge_pressure",
+                  "heat_flux",
+                  "heat_transfer_coefficient",
+                  "kinematic_viscosity",
+                  "length",
+                  "mass",
+                  "second_moment_of_area",
+                  "strain",
+                  "stress",
+                  "temperature_difference",
+                  "thermal_conductivity",
+                  "thermodynamic_temperature",
+                  "time",
+                  "velocity"
+                ]
+              },
+              "unit": {
+                "enum": [
+                  "1",
+                  "GPa",
+                  "Hz",
+                  "K",
+                  "MPa",
+                  "N",
+                  "Pa",
+                  "Pa.s",
+                  "W/(m.K)",
+                  "W/(m2.K)",
+                  "W/m2",
+                  "bar",
+                  "cm",
+                  "cm2",
+                  "cm4",
+                  "g",
+                  "g/cm3",
+                  "h",
+                  "kN",
+                  "kPa",
+                  "kg",
+                  "kg/m3",
+                  "km",
+                  "km/h",
+                  "m",
+                  "m/s",
+                  "m2",
+                  "m2/s",
+                  "m4",
+                  "mPa.s",
+                  "min",
+                  "mm",
+                  "mm/s",
+                  "mm2",
+                  "mm2/s",
+                  "mm4",
+                  "ms",
+                  "nm",
+                  "s",
+                  "um"
+                ]
+              },
+              "value": {
+                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "unit",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "scale_id": {
+            "pattern": "^(SCL)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scale_id",
+          "description",
+          "quantity",
+          "basis",
+          "evidence_ids",
+          "assumption_ids"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "contrainte.physics-intent/0.1"
+    },
+    "target_outputs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "absolute_pressure",
+              "area",
+              "density",
+              "dimensionless",
+              "dynamic_viscosity",
+              "force",
+              "frequency",
+              "gauge_pressure",
+              "heat_flux",
+              "heat_transfer_coefficient",
+              "kinematic_viscosity",
+              "length",
+              "mass",
+              "second_moment_of_area",
+              "strain",
+              "stress",
+              "temperature_difference",
+              "thermal_conductivity",
+              "thermodynamic_temperature",
+              "time",
+              "velocity"
+            ]
+          },
+          "location_ref": {
+            "pattern": "^(FEA|OCC|SUR)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "output_id": {
+            "pattern": "^(QOI)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "1",
+              "GPa",
+              "Hz",
+              "K",
+              "MPa",
+              "N",
+              "Pa",
+              "Pa.s",
+              "W/(m.K)",
+              "W/(m2.K)",
+              "W/m2",
+              "bar",
+              "cm",
+              "cm2",
+              "cm4",
+              "g",
+              "g/cm3",
+              "h",
+              "kN",
+              "kPa",
+              "kg",
+              "kg/m3",
+              "km",
+              "km/h",
+              "m",
+              "m/s",
+              "m2",
+              "m2/s",
+              "m4",
+              "mPa.s",
+              "min",
+              "mm",
+              "mm/s",
+              "mm2",
+              "mm2/s",
+              "mm4",
+              "ms",
+              "nm",
+              "s",
+              "um"
+            ]
+          }
+        },
+        "required": [
+          "output_id",
+          "description",
+          "kind",
+          "unit",
+          "location_ref"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "time": {
+      "additionalProperties": false,
+      "properties": {
+        "character": {
+          "enum": [
+            "steady",
+            "transient",
+            "cyclic",
+            "stochastic"
+          ]
+        },
+        "duration": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "absolute_pressure",
+                    "area",
+                    "density",
+                    "dimensionless",
+                    "dynamic_viscosity",
+                    "force",
+                    "frequency",
+                    "gauge_pressure",
+                    "heat_flux",
+                    "heat_transfer_coefficient",
+                    "kinematic_viscosity",
+                    "length",
+                    "mass",
+                    "second_moment_of_area",
+                    "strain",
+                    "stress",
+                    "temperature_difference",
+                    "thermal_conductivity",
+                    "thermodynamic_temperature",
+                    "time",
+                    "velocity"
+                  ]
+                },
+                "unit": {
+                  "enum": [
+                    "1",
+                    "GPa",
+                    "Hz",
+                    "K",
+                    "MPa",
+                    "N",
+                    "Pa",
+                    "Pa.s",
+                    "W/(m.K)",
+                    "W/(m2.K)",
+                    "W/m2",
+                    "bar",
+                    "cm",
+                    "cm2",
+                    "cm4",
+                    "g",
+                    "g/cm3",
+                    "h",
+                    "kN",
+                    "kPa",
+                    "kg",
+                    "kg/m3",
+                    "km",
+                    "km/h",
+                    "m",
+                    "m/s",
+                    "m2",
+                    "m2/s",
+                    "m4",
+                    "mPa.s",
+                    "min",
+                    "mm",
+                    "mm/s",
+                    "mm2",
+                    "mm2/s",
+                    "mm4",
+                    "ms",
+                    "nm",
+                    "s",
+                    "um"
+                  ]
+                },
+                "value": {
+                  "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "unit",
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "fidelity": {
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "enum": [
+                "screening",
+                "engineering",
+                "high_fidelity"
+              ]
+            },
+            "rationale": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "pattern": "^\\S([\\s\\S]*\\S)?$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "level",
+            "rationale"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "character",
+        "duration",
+        "fidelity"
+      ],
+      "type": "object"
+    },
+    "title": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "pattern": "^\\S([\\s\\S]*\\S)?$",
+      "type": "string"
+    },
+    "uncertainty_sources": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "aleatory",
+              "epistemic",
+              "model_form",
+              "numerical"
+            ]
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "source_id": {
+            "pattern": "^(UNC)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "category",
+          "description"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "validation_evidence": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^\\S([\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "pattern": "^(EVD)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+              "type": "string"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "status": {
+            "enum": [
+              "available",
+              "planned"
+            ]
+          },
+          "validation_id": {
+            "pattern": "^(VAL)-[A-Z0-9]+(-[A-Z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "validation_id",
+          "status",
+          "description",
+          "evidence_ids"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "intent_id",
+    "revision",
+    "title",
+    "requested_mode",
+    "criticality",
+    "decision",
+    "target_outputs",
+    "acceptance",
+    "geometry",
+    "domains",
+    "time",
+    "nonlinearities",
+    "scales",
+    "group_declarations",
+    "candidate_model_forms",
+    "materials",
+    "loads",
+    "environment",
+    "boundary_conditions",
+    "initial_conditions",
+    "interfaces",
+    "failure_modes",
+    "uncertainty_sources",
+    "evidence",
+    "validation_evidence",
+    "model_form_alternatives",
+    "assumptions",
+    "rule_set_pin"
+  ],
+  "title": "contrainte.physics-intent/0.1",
+  "type": "object"
+}
