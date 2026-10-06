@@ -86,6 +86,14 @@ python -m contrainte sketch compile examples/circular-through-hole-plate.json --
 python -m contrainte sketch verify artifacts/circular-through-hole-plate/plate.circular.demo.sketch-bundle.json
 ```
 
+Version 0.3 adds an exact midpoint relation. In the example, the midpoint of the plate diagonal locates a hole centre. A verified 0.3 bundle derives a component through the same release requests as 0.2:
+
+```powershell
+python -m contrainte sketch compile examples/midpoint-hole-plate.json --output-dir artifacts/midpoint-hole-plate
+python -m contrainte component derive artifacts/midpoint-hole-plate/plate.midpoint.demo.sketch-bundle.json examples/pedestal-component.json --output artifacts/midpoint-hole-plate/component.fixture.demo.json
+python -m contrainte component verify artifacts/midpoint-hole-plate/component.fixture.demo.json
+```
+
 Verified sketch bundles use the same component-release boundary as prismatic, solid-program, and assembly bundles. Derivation preserves the exact geometry, drawing, mesh, source-bundle identity, and explicit unqualified status rather than treating the sketch as an informal precursor.
 
 Derive an explicitly unqualified component manifest that pins the exact bundle and every local artifact, then verify the complete chain:

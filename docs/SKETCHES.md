@@ -126,7 +126,9 @@ Input 0.1 produces `contrainte.sketch-bundle/0.1`; input 0.2 produces `contraint
 
 Verification is reproduction, not a checksum-only operation. It reparses the embedded sketch, solves every constraint, rebuilds and remeasures the B-rep, compares the full analysis and kernel identity, checks the exact expected check list, and verifies all three referenced artifacts.
 
-A verified 0.1 or 0.2 sketch bundle can be passed to `contrainte component derive`. Component derivation does not yet accept `contrainte.sketch-bundle/0.3` and rejects it as an unsupported engineering bundle schema. `tests/test_release.py` pins that rejection. Adopting 0.3 is a separate release-boundary change. The resulting unqualified component manifest pins the source bundle, exact STEP geometry, mesh, drawing, and B-rep-derived bounds under the same release boundary as the other public CAD forms.
+A verified 0.1, 0.2, or 0.3 sketch bundle can be passed to `contrainte component derive`. The resulting unqualified component manifest pins the source bundle, exact STEP geometry, mesh, drawing, and B-rep-derived bounds under the same release boundary as the other public CAD forms.
+
+Release of a 0.3 bundle is additive. It uses the existing release requests 0.1 and 0.2 and component manifests 0.2 and 0.3. The manifest records `engineering_bundle_schema` as `contrainte.sketch-bundle/0.3` and keeps the existing derivation labels. Derivation and every later verification run the complete 0.3 verifier on one captured snapshot: they re-solve the midpoint relations, rebuild the B-rep from the solved coordinates, and reject a bundle relabelled as 0.2. Bounds and the geometry passed to component assemblies come from that rebuilt B-rep, never from the STEP or STL files. Topology-backed release request 0.3 still accepts only prismatic CAD bundles. Any other sketch-bundle version stays unsupported. A consumer built before this change rejects 0.3-derived components as an unsupported engineering bundle schema rather than reading them as 0.2.
 
 ## CLI
 
@@ -138,7 +140,13 @@ python -m contrainte sketch compile examples/constrained-pocket-plate.json --out
 python -m contrainte sketch verify artifacts/constrained-pocket-plate/plate.sketch.demo.sketch-bundle.json
 python -m contrainte sketch compile examples/circular-through-hole-plate.json --output-dir artifacts/circular-through-hole-plate
 python -m contrainte sketch verify artifacts/circular-through-hole-plate/plate.circular.demo.sketch-bundle.json
+python -m contrainte sketch compile examples/midpoint-hole-plate.json --output-dir artifacts/midpoint-hole-plate
+python -m contrainte sketch verify artifacts/midpoint-hole-plate/plate.midpoint.demo.sketch-bundle.json
+python -m contrainte component derive artifacts/midpoint-hole-plate/plate.midpoint.demo.sketch-bundle.json examples/pedestal-component.json --output artifacts/midpoint-hole-plate/component.fixture.demo.json
+python -m contrainte component verify artifacts/midpoint-hole-plate/component.fixture.demo.json
 ```
+
+In `examples/midpoint-hole-plate.json`, the centre of `hole.01` is the exact midpoint of the plate diagonal `p0`-`p2`, which is (50, 30).
 
 The compile command prints the bundle digest. The verify command prints a JSON report containing `status`, `bundle_digest`, and `sketch_digest`. A validation, execution, integrity, or artifact failure returns exit status 2 and a concise error on standard error.
 

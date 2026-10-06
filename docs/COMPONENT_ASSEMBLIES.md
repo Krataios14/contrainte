@@ -87,7 +87,7 @@ geometry authority. For every binding it:
 The currently supported source bundles are:
 
 - `contrainte.cad-bundle/0.1`;
-- `contrainte.sketch-bundle/0.1` and `/0.2`;
+- `contrainte.sketch-bundle/0.1`, `/0.2`, and `/0.3`;
 - `contrainte.solid-bundle/0.1`; and
 - `contrainte.assembly-bundle/0.1`.
 

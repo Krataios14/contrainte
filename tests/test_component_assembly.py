@@ -46,8 +46,12 @@ from contrainte.release import (
     derive_component_manifest,
     write_component_manifest,
 )
+from contrainte.sketch import compile_sketch_extrusion, load_sketch_extrusion
 
 PART_EXAMPLE = Path(__file__).parents[1] / "examples" / "mounting-plate.json"
+MIDPOINT_SKETCH_EXAMPLE = (
+    Path(__file__).parents[1] / "examples" / "midpoint-hole-plate.json"
+)
 CAD_AVAILABLE = find_spec("build123d") is not None
 
 
@@ -83,7 +87,9 @@ def _transform(
     }
 
 
-def _release_request(component_id: str, interface_id: str, x: str) -> dict:
+def _release_request(
+    component_id: str, interface_id: str, x: str, y: str = "0"
+) -> dict:
     return {
         "schema_version": "contrainte.component-release-request/0.2",
         "component_id": component_id,
@@ -99,7 +105,7 @@ def _release_request(component_id: str, interface_id: str, x: str) -> dict:
                 "frame": {
                     "reference": "engineering_bundle",
                     "unit": "mm",
-                    "origin": {"x": x, "y": "0", "z": "5"},
+                    "origin": {"x": x, "y": y, "z": "5"},
                     "basis": {
                         "x_axis": {"x": "1", "y": "0", "z": "0"},
                         "y_axis": {"x": "0", "y": "1", "z": "0"},
@@ -149,19 +155,31 @@ class ComponentAssemblyTests(unittest.TestCase):
         gap: str = "5",
         minimum_clearance: str = "5",
         anchor_basis: dict[str, dict[str, str]] | None = None,
+        midpoint_sketch: bool = False,
     ) -> tuple[ComponentAssembly, Path, Path, Path]:
         component_root = root / "components"
         component_root.mkdir()
-        part = load_part(PART_EXAMPLE)
-        compile_part(part, component_root)
-        bundle_path = component_root / "plate.demo.cad-bundle.json"
+        if midpoint_sketch:
+            sketch = load_sketch_extrusion(MIDPOINT_SKETCH_EXAMPLE)
+            compile_sketch_extrusion(sketch, component_root)
+            bundle_path = component_root / f"{sketch.part_id}.sketch-bundle.json"
+            edges = (("100", "30"), ("0", "30"))
+        else:
+            part = load_part(PART_EXAMPLE)
+            compile_part(part, component_root)
+            bundle_path = component_root / "plate.demo.cad-bundle.json"
+            edges = (("60", "0"), ("-60", "0"))
         manifests = []
-        for occurrence_id, component_id, interface_id, x in (
-            ("left", "component.plate-left", "edge-right", "60"),
-            ("right", "component.plate-right", "edge-left", "-60"),
+        for (occurrence_id, component_id, interface_id), (x, y) in zip(
+            (
+                ("left", "component.plate-left", "edge-right"),
+                ("right", "component.plate-right", "edge-left"),
+            ),
+            edges,
+            strict=True,
         ):
             request = ComponentReleaseRequest.from_dict(
-                _release_request(component_id, interface_id, x)
+                _release_request(component_id, interface_id, x, y)
             )
             manifest = derive_component_manifest(bundle_path, request)
             manifest_path = component_root / f"{occurrence_id}.component.json"
@@ -282,6 +300,30 @@ class ComponentAssemblyTests(unittest.TestCase):
             )
             self.assertTrue((output / "component-pair.step").is_file())
             self.assertTrue((output / "component-pair.stl").is_file())
+
+    def test_midpoint_sketch_releases_compile_and_verify_as_pair(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assembly, _, _, component_root = self._fixture(root, midpoint_sketch=True)
+            output = root / "output"
+
+            bundle = compile_component_assembly(assembly, root, output)
+            report = verify_component_assembly_bundle(
+                output / "component-pair.component-assembly-bundle.json", root
+            )
+
+            self.assertEqual(report["status"], "verified")
+            pair = bundle["content"]["analysis"]["pair_results"][0]
+            self.assertEqual(pair["distance_mm"], "5")
+            self.assertEqual(pair["status"], "passed")
+            for occurrence_id in ("left", "right"):
+                manifest = loads_strict(
+                    (component_root / f"{occurrence_id}.component.json").read_bytes()
+                )
+                self.assertEqual(
+                    manifest["metadata"]["engineering_bundle_schema"],
+                    "contrainte.sketch-bundle/0.3",
+                )
 
     def test_prepare_rebinds_current_releases_and_closes_strict_compile(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

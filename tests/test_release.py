@@ -3,15 +3,17 @@ from __future__ import annotations
 import copy
 import tempfile
 import unittest
+from decimal import Decimal
 from importlib.util import find_spec
 from pathlib import Path
 from unittest.mock import patch
 
 from contrainte.artifacts import file_digest
 from contrainte.cad import compile_part, load_part
-from contrainte.canonical import dumps_pretty, loads_strict
+from contrainte.canonical import digest, dumps_pretty, loads_strict
 from contrainte.component import ArtifactRole, Qualification
 from contrainte.errors import InputError, IntegrityError
+from contrainte.geometry import kernel_measurement
 from contrainte.release import (
     ComponentReleaseRequest,
     derive_component_manifest,
@@ -20,10 +22,21 @@ from contrainte.release import (
     verify_local_component_manifest,
     write_component_manifest,
 )
-from contrainte.sketch import compile_sketch_extrusion, load_sketch_extrusion
+from contrainte.sketch import (
+    SketchExtrusion,
+    compile_sketch_extrusion,
+    load_sketch_extrusion,
+)
 from contrainte.solid import compile_solid_program, load_solid_program
 
 SOLID_EXAMPLE = Path(__file__).parents[1] / "examples" / "pedestal-bracket.json"
+MIDPOINT_SKETCH_EXAMPLE = (
+    Path(__file__).parents[1] / "examples" / "midpoint-hole-plate.json"
+)
+REQUEST_EXAMPLE = Path(__file__).parents[1] / "examples" / "pedestal-component.json"
+FRAMED_REQUEST_EXAMPLE = (
+    Path(__file__).parents[1] / "examples" / "pedestal-component-framed.json"
+)
 SKETCH_EXAMPLE = (
     Path(__file__).parents[1] / "examples" / "constrained-pocket-plate.json"
 )
@@ -870,38 +883,232 @@ class ComponentReleaseTests(unittest.TestCase):
                 },
             )
 
-    @unittest.skipUnless(
-        find_spec("build123d"), "optional CAD backend is not installed"
-    )
-    def test_midpoint_sketch_bundle_is_not_yet_releasable(self) -> None:
-        document = loads_strict(CIRCULAR_SKETCH_EXAMPLE.read_bytes())
-        document["schema_version"] = "contrainte.sketch-extrusion/0.3"
-        document["constraints"][0] = {
-            "constraint_id": "c01",
-            "kind": "midpoint",
-            "first_point_id": "p0",
-            "second_point_id": "p2",
-            "midpoint_point_id": "c0",
-        }
+
+@unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+class MidpointSketchReleaseTests(unittest.TestCase):
+    """Component release of exact midpoint (sketch-extrusion 0.3) bundles."""
+
+    def compile_document(self, root: Path, document: dict) -> Path:
+        root.mkdir(parents=True, exist_ok=True)
+        source_path = root / "source.json"
+        source_path.write_text(dumps_pretty(document), encoding="utf-8", newline="\n")
+        sketch = load_sketch_extrusion(source_path)
+        compile_sketch_extrusion(sketch, root)
+        return root / f"{sketch.part_id}.sketch-bundle.json"
+
+    def midpoint_document(self, second_point_id: str = "p2") -> dict:
+        document = loads_strict(MIDPOINT_SKETCH_EXAMPLE.read_bytes())
+        document["constraints"][0]["second_point_id"] = second_point_id
+        return document
+
+    def request(self, schema: str = "0.1") -> ComponentReleaseRequest:
+        return load_release_request(
+            FRAMED_REQUEST_EXAMPLE if schema == "0.2" else REQUEST_EXAMPLE
+        )
+
+    def rewrite_bundle(self, bundle_path: Path, edit) -> None:
+        bundle = loads_strict(bundle_path.read_bytes())
+        edit(bundle["content"])
+        bundle["digest"] = digest(bundle["content"])
+        bundle_path.write_text(dumps_pretty(bundle), encoding="utf-8", newline="\n")
+
+    def hole_axes(self, shape) -> list[tuple[Decimal, Decimal]]:
+        from build123d import GeomType
+
+        return sorted(
+            (
+                kernel_measurement(face.axis_of_rotation.position.X),
+                kernel_measurement(face.axis_of_rotation.position.Y),
+            )
+            for face in shape.faces()
+            if face.geom_type is GeomType.CYLINDER
+        )
+
+    def test_midpoint_bundle_releases_geometry_from_solved_centre(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            source_path = Path(directory) / "source.json"
-            source_path.write_text(
-                dumps_pretty(document), encoding="utf-8", newline="\n"
-            )
-            sketch = load_sketch_extrusion(source_path)
-            bundle = compile_sketch_extrusion(sketch, directory)
+            root = Path(directory)
+            bundle_path = self.compile_document(root, self.midpoint_document())
+
+            manifest = derive_component_manifest(bundle_path, self.request())
+            again = derive_component_manifest(bundle_path, self.request())
+            manifest_path = root / "component.fixture.demo.json"
+            write_component_manifest(manifest_path, manifest, bundle_path=bundle_path)
+            report = verify_local_component_manifest(manifest_path)
+            reproduced, shape = reproduce_local_component_shape(manifest_path)
+
+            self.assertEqual(report["status"], "verified")
+            self.assertEqual(manifest.as_dict(), again.as_dict())
+            self.assertEqual(manifest.schema_version, "contrainte.component-manifest/0.2")
             self.assertEqual(
-                bundle["content"]["schema_version"], "contrainte.sketch-bundle/0.3"
+                manifest.metadata["engineering_bundle_schema"],
+                "contrainte.sketch-bundle/0.3",
             )
-            bundle_path = Path(directory) / f"{sketch.part_id}.sketch-bundle.json"
+            self.assertEqual(
+                manifest.metadata["derivation"], "verified_exact_bundle/0.1"
+            )
+            self.assertEqual(manifest.source_bundle_digest, file_digest(bundle_path))
+            self.assertEqual(reproduced.manifest_digest, manifest.manifest_digest)
+            self.assertEqual(
+                manifest.geometry_bounds.as_dict(),  # type: ignore[union-attr]
+                {
+                    "frame": "engineering_bundle",
+                    "unit": "mm",
+                    "minimum": {"x": "0", "y": "0", "z": "0"},
+                    "maximum": {"x": "100", "y": "60", "z": "10"},
+                },
+            )
+            self.assertEqual(
+                self.hole_axes(shape),
+                [(Decimal(50), Decimal(30)), (Decimal(80), Decimal(30))],
+            )
+
+    def test_framed_midpoint_release_binds_request_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle_path = self.compile_document(root, self.midpoint_document())
+            request = self.request("0.2")
+
+            manifest = derive_component_manifest(bundle_path, request)
+            manifest_path = root / "component.fixture.framed-demo.json"
+            write_component_manifest(manifest_path, manifest, bundle_path=bundle_path)
+
+            self.assertEqual(
+                verify_local_component_manifest(manifest_path)["status"], "verified"
+            )
+            self.assertEqual(manifest.schema_version, "contrainte.component-manifest/0.3")
+            self.assertEqual(
+                manifest.metadata["component_release_request_content_digest"],
+                digest(request.as_dict()),
+            )
+
+    def test_midpoint_release_matches_equivalent_fixed_centre_release(self) -> None:
+        fixed = loads_strict(CIRCULAR_SKETCH_EXAMPLE.read_bytes())
+        midpoint = self.midpoint_document()
+        fixed["part_id"] = midpoint["part_id"]
+        fixed["title"] = midpoint["title"]
+        fixed["constraints"][0]["x"]["value"] = "50"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixed_path = self.compile_document(root / "fixed", fixed)
+            midpoint_path = self.compile_document(root / "midpoint", midpoint)
+
+            fixed_manifest = derive_component_manifest(fixed_path, self.request())
+            midpoint_manifest = derive_component_manifest(midpoint_path, self.request())
+
+            def geometry_artifacts(manifest):
+                return [
+                    item
+                    for item in manifest.artifacts
+                    if item.role is not ArtifactRole.ENGINEERING_BUNDLE
+                ]
+
+            self.assertEqual(
+                geometry_artifacts(fixed_manifest), geometry_artifacts(midpoint_manifest)
+            )
+            self.assertEqual(
+                fixed_manifest.geometry_bounds, midpoint_manifest.geometry_bounds
+            )
+            self.assertEqual(
+                fixed_manifest.metadata["engineering_bundle_schema"],
+                "contrainte.sketch-bundle/0.2",
+            )
+            self.assertNotEqual(
+                fixed_manifest.source_bundle_digest,
+                midpoint_manifest.source_bundle_digest,
+            )
+
+    def test_moved_midpoint_endpoint_moves_released_hole(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = self.compile_document(root / "original", self.midpoint_document())
+            moved = self.compile_document(root / "moved", self.midpoint_document("c1"))
+
+            original_manifest = derive_component_manifest(original, self.request())
+            moved_manifest = derive_component_manifest(moved, self.request())
+            manifest_path = moved.parent / "component.fixture.demo.json"
+            write_component_manifest(manifest_path, moved_manifest, bundle_path=moved)
+            _, shape = reproduce_local_component_shape(manifest_path)
+
+            self.assertNotEqual(
+                original_manifest.manifest_digest, moved_manifest.manifest_digest
+            )
+            self.assertEqual(
+                self.hole_axes(shape),
+                [(Decimal(40), Decimal(15)), (Decimal(80), Decimal(30))],
+            )
+
+    def test_relabelled_midpoint_bundle_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle_path = self.compile_document(Path(directory), self.midpoint_document())
+
+            def relabel(content: dict) -> None:
+                content["schema_version"] = "contrainte.sketch-bundle/0.2"
+
+            self.rewrite_bundle(bundle_path, relabel)
+
+            with self.assertRaisesRegex(IntegrityError, "do not correspond"):
+                derive_component_manifest(bundle_path, self.request())
+
+    def test_rehashed_midpoint_relation_edit_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle_path = self.compile_document(Path(directory), self.midpoint_document())
+
+            def move_endpoint(content: dict) -> None:
+                content["sketch"]["constraints"][0]["second_point_id"] = "c1"
+                content["sketch_digest"] = SketchExtrusion.from_dict(
+                    content["sketch"]
+                ).sketch_digest
+
+            self.rewrite_bundle(bundle_path, move_endpoint)
+
+            with self.assertRaisesRegex(IntegrityError, "does not reproduce"):
+                derive_component_manifest(bundle_path, self.request())
+
+    def test_tampered_midpoint_geometry_artifact_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle_path = self.compile_document(Path(directory), self.midpoint_document())
+            step_path = bundle_path.with_name("plate.midpoint.demo.step")
+            step_path.write_bytes(step_path.read_bytes() + b"\n")
+
+            with self.assertRaisesRegex(IntegrityError, "digest mismatch"):
+                derive_component_manifest(bundle_path, self.request())
+
+    def test_stale_midpoint_component_is_rejected_after_recompile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle_path = self.compile_document(root, self.midpoint_document())
+            manifest = derive_component_manifest(bundle_path, self.request())
+            manifest_path = root / "component.fixture.demo.json"
+            write_component_manifest(manifest_path, manifest, bundle_path=bundle_path)
+
+            self.compile_document(root, self.midpoint_document("c1"))
+
+            with self.assertRaises(IntegrityError):
+                verify_local_component_manifest(manifest_path)
+            with self.assertRaises(IntegrityError):
+                reproduce_local_component_shape(manifest_path)
+
+    def test_unknown_sketch_bundle_version_remains_unreleasable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle_path = self.compile_document(Path(directory), self.midpoint_document())
+
+            def relabel(content: dict) -> None:
+                content["schema_version"] = "contrainte.sketch-bundle/0.4"
+
+            self.rewrite_bundle(bundle_path, relabel)
 
             with self.assertRaisesRegex(
                 InputError, "unsupported component engineering bundle schema"
             ):
-                derive_component_manifest(
-                    bundle_path,
-                    ComponentReleaseRequest.from_dict(self.request_document()),
-                )
+                derive_component_manifest(bundle_path, self.request())
+
+    def test_topology_release_still_requires_prismatic_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle_path = self.compile_document(Path(directory), self.midpoint_document())
+            request = load_release_request(TOPOLOGY_REQUEST_EXAMPLE)
+
+            with self.assertRaisesRegex(InputError, "prismatic CAD bundle"):
+                derive_component_manifest(bundle_path, request)
 
 
 if __name__ == "__main__":

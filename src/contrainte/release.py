@@ -39,6 +39,7 @@ from .geometry import kernel_measurement
 from .sketch import (
     SKETCH_BUNDLE_SCHEMA,
     SKETCH_BUNDLE_SCHEMA_V2,
+    SKETCH_BUNDLE_SCHEMA_V3,
     SketchExtrusion,
     build_sketch_shape,
     verify_sketch_bundle,
@@ -77,6 +78,12 @@ _MAX_COMPONENT_INTERFACES = 64
 _MAX_RELEASE_ARTIFACT_BYTES = 64 * 1024 * 1024
 _MAX_RELEASE_CHAIN_BYTES = 128 * 1024 * 1024
 _MAX_RELEASE_ARTIFACTS = 128
+# Every accepted sketch-bundle version is fully self-verifying: the sketch
+# verifier re-solves the embedded constraints (including 0.3 midpoints),
+# rebuilds the B-rep and rejects cross-version relabelling.
+_RELEASABLE_SKETCH_BUNDLE_SCHEMAS = frozenset(
+    {SKETCH_BUNDLE_SCHEMA, SKETCH_BUNDLE_SCHEMA_V2, SKETCH_BUNDLE_SCHEMA_V3}
+)
 
 
 def _is_link_or_reparse(path: Path) -> bool:
@@ -1234,7 +1241,7 @@ def _verified_bundle_artifacts(
             (snapshot_root / locator).write_bytes(captured)
         if schema == CAD_BUNDLE_SCHEMA:
             verify_cad_bundle(snapshot_path)
-        elif schema in {SKETCH_BUNDLE_SCHEMA, SKETCH_BUNDLE_SCHEMA_V2}:
+        elif schema in _RELEASABLE_SKETCH_BUNDLE_SCHEMAS:
             verify_sketch_bundle(snapshot_path)
         elif schema == SOLID_BUNDLE_SCHEMA:
             verify_solid_bundle(snapshot_path)
@@ -1286,7 +1293,7 @@ def _shape_from_verified_bundle(document: Mapping[str, Any], schema: str) -> Any
     content = document["content"]
     if schema == CAD_BUNDLE_SCHEMA:
         shape = build_part_shape(PrismaticPart.from_dict(content["part"]))
-    elif schema in {SKETCH_BUNDLE_SCHEMA, SKETCH_BUNDLE_SCHEMA_V2}:
+    elif schema in _RELEASABLE_SKETCH_BUNDLE_SCHEMAS:
         shape = build_sketch_shape(SketchExtrusion.from_dict(content["sketch"]))
     elif schema == SOLID_BUNDLE_SCHEMA:
         _, shape = analyze_solid_program(SolidProgram.from_dict(content["program"]))
