@@ -87,7 +87,7 @@ def _reject_constant(value: str) -> None:
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    # Keys arrive already unescaped, so "a" and "a" collide here.
+    # Escaped and literal spellings compare as decoded keys.
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:

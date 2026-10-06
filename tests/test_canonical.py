@@ -63,9 +63,11 @@ class CanonicalTests(unittest.TestCase):
 
     def test_non_finite_constants_are_rejected(self) -> None:
         for text in ("NaN", "Infinity", "-Infinity", '{"v": [NaN]}'):
-            with self.subTest(text=text):
-                with self.assertRaisesRegex(InputError, "non-finite JSON constant"):
-                    loads_strict(text)
+            with (
+                self.subTest(text=text),
+                self.assertRaisesRegex(InputError, "non-finite JSON constant"),
+            ):
+                loads_strict(text)
 
     def test_cli_reports_duplicate_key_as_input_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
