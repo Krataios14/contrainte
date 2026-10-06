@@ -15,7 +15,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Evidence references whose inline content is verified by SHA-256.
 - Claims that retain basis, status, applicability, and evidence links.
 - A deterministic analytical axial-tension solver.
-- Canonical JSON with stable SHA-256 bundle identifiers.
+- Canonical JSON with stable SHA-256 bundle identifiers. Strict JSON input rejects duplicate object keys at any depth (compared after escape decoding, without Unicode normalization), float literals, and the non-JSON constants `NaN`, `Infinity`, and `-Infinity`.
 - Content-addressed component manifests with typed interfaces, exact rational interface frames, and exact-geometry bounds reproduced from the source B-rep.
 - Versioned topology-backed component interfaces that bind frames to authored prismatic stock faces or named through-hole walls and independently replay the matching kernel face.
 - Exact rational rigid-transform algebra with proper-rotation proofs, composition, inversion, point application, and bounded canonical evidence.

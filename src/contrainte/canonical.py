@@ -82,9 +82,30 @@ def _reject_float(value: str) -> None:
     )
 
 
+def _reject_constant(value: str) -> None:
+    raise InputError(f"non-finite JSON constant {value!r} is forbidden")
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    # Keys arrive already unescaped, so "a" and "a" collide here.
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise InputError(f"duplicate JSON object key is forbidden: {key!r}")
+        result[key] = value
+    return result
+
+
 def loads_strict(content: str | bytes) -> Any:
+    """Parse JSON, rejecting float literals, NaN/Infinity, and duplicate keys."""
+
     try:
-        return json.loads(content, parse_float=_reject_float)
+        return json.loads(
+            content,
+            parse_float=_reject_float,
+            parse_constant=_reject_constant,
+            object_pairs_hook=_unique_object,
+        )
     except json.JSONDecodeError as exc:
         raise InputError(
             f"invalid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}"
