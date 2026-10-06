@@ -28,7 +28,7 @@ Contrainte is a component rather than a closed application. A factory designer, 
 - Geometry-backed component assemblies that bind replayed exact interface solutions to verified local component releases, project rational poses directly into Open CASCADE matrices, and reject interference or insufficient clearance before deterministic export.
 - Conservative reference-spatial assemblies that place verified released B-reps around one protected existing component, replay occupied/keepout/access/service box evidence, and emit JSON-only non-release results.
 - General exact-solid feature DAGs with boxes, cylinders, spheres, rigid transforms, boolean construction, graph validation, feature-size rules, and mass/envelope limits.
-- Fully constrained sketches solved with exact rational arithmetic, strict polygon topology, exact-diameter circular through-holes, symbolic circular-area evidence, and evidence-backed Open CASCADE extrusion.
+- Fully constrained sketches solved with exact rational arithmetic, an exact midpoint relation (sketch schema 0.3), strict polygon topology, exact-diameter circular through-holes, symbolic circular-area evidence, and evidence-backed Open CASCADE extrusion.
 - Strict design-program DAGs with declared work products, execution authority, acceptance criteria, and human gates.
 - Content-addressed resumable workspaces that detect state or object tampering.
 - Isolated subscription-CLI adapters for Codex, Claude, or two independent candidates.

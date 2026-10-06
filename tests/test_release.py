@@ -870,6 +870,39 @@ class ComponentReleaseTests(unittest.TestCase):
                 },
             )
 
+    @unittest.skipUnless(
+        find_spec("build123d"), "optional CAD backend is not installed"
+    )
+    def test_midpoint_sketch_bundle_is_not_yet_releasable(self) -> None:
+        document = loads_strict(CIRCULAR_SKETCH_EXAMPLE.read_bytes())
+        document["schema_version"] = "contrainte.sketch-extrusion/0.3"
+        document["constraints"][0] = {
+            "constraint_id": "c01",
+            "kind": "midpoint",
+            "first_point_id": "p0",
+            "second_point_id": "p2",
+            "midpoint_point_id": "c0",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "source.json"
+            source_path.write_text(
+                dumps_pretty(document), encoding="utf-8", newline="\n"
+            )
+            sketch = load_sketch_extrusion(source_path)
+            bundle = compile_sketch_extrusion(sketch, directory)
+            self.assertEqual(
+                bundle["content"]["schema_version"], "contrainte.sketch-bundle/0.3"
+            )
+            bundle_path = Path(directory) / f"{sketch.part_id}.sketch-bundle.json"
+
+            with self.assertRaisesRegex(
+                InputError, "unsupported component engineering bundle schema"
+            ):
+                derive_component_manifest(
+                    bundle_path,
+                    ComponentReleaseRequest.from_dict(self.request_document()),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,10 +20,26 @@ from .units import Quantity
 
 SKETCH_EXTRUSION_SCHEMA = "contrainte.sketch-extrusion/0.1"
 SKETCH_EXTRUSION_SCHEMA_V2 = "contrainte.sketch-extrusion/0.2"
+SKETCH_EXTRUSION_SCHEMA_V3 = "contrainte.sketch-extrusion/0.3"
 SKETCH_BUNDLE_SCHEMA = "contrainte.sketch-bundle/0.1"
 SKETCH_BUNDLE_SCHEMA_V2 = "contrainte.sketch-bundle/0.2"
-_SKETCH_EXTRUSION_SCHEMAS = {SKETCH_EXTRUSION_SCHEMA, SKETCH_EXTRUSION_SCHEMA_V2}
-_SKETCH_BUNDLE_SCHEMAS = {SKETCH_BUNDLE_SCHEMA, SKETCH_BUNDLE_SCHEMA_V2}
+SKETCH_BUNDLE_SCHEMA_V3 = "contrainte.sketch-bundle/0.3"
+_SKETCH_EXTRUSION_SCHEMAS = {
+    SKETCH_EXTRUSION_SCHEMA,
+    SKETCH_EXTRUSION_SCHEMA_V2,
+    SKETCH_EXTRUSION_SCHEMA_V3,
+}
+_SKETCH_BUNDLE_SCHEMAS = {
+    SKETCH_BUNDLE_SCHEMA,
+    SKETCH_BUNDLE_SCHEMA_V2,
+    SKETCH_BUNDLE_SCHEMA_V3,
+}
+_BUNDLE_SCHEMA_BY_SKETCH_SCHEMA = {
+    SKETCH_EXTRUSION_SCHEMA: SKETCH_BUNDLE_SCHEMA,
+    SKETCH_EXTRUSION_SCHEMA_V2: SKETCH_BUNDLE_SCHEMA_V2,
+    SKETCH_EXTRUSION_SCHEMA_V3: SKETCH_BUNDLE_SCHEMA_V3,
+}
+_CIRCULAR_SCHEMAS = {SKETCH_EXTRUSION_SCHEMA_V2, SKETCH_EXTRUSION_SCHEMA_V3}
 _PI_DECIMAL = (
     "3.141592653589793238462643383279502884197169399375105820974944592307816406"
     "2862089986280348253421170679"
@@ -31,6 +47,7 @@ _PI_DECIMAL = (
 _PI_DECIMAL_PLACES = 100
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _CONSTRAINT_KINDS = {"fixed", "horizontal", "vertical", "offset_x", "offset_y"}
+_CONSTRAINT_KINDS_V3 = _CONSTRAINT_KINDS | {"midpoint"}
 _AXES = ("x", "y")
 
 
@@ -123,15 +140,46 @@ class SketchConstraint:
     x: Quantity | None
     y: Quantity | None
     distance: Quantity | None
+    midpoint_point_id: str | None = None
 
     @classmethod
-    def from_dict(cls, raw: Any, *, field: str) -> SketchConstraint:
+    def from_dict(
+        cls,
+        raw: Any,
+        *,
+        field: str,
+        schema_version: str = SKETCH_EXTRUSION_SCHEMA,
+    ) -> SketchConstraint:
         if not isinstance(raw, dict):
             raise InputError(f"{field} must be an object")
         constraint_id = _safe_id(raw, "constraint_id", field)
         kind = _string(raw, "kind", field)
-        if kind not in _CONSTRAINT_KINDS:
+        kinds = (
+            _CONSTRAINT_KINDS_V3
+            if schema_version == SKETCH_EXTRUSION_SCHEMA_V3
+            else _CONSTRAINT_KINDS
+        )
+        if kind not in kinds:
             raise InputError(f"{field}.kind is unsupported: {kind!r}")
+        if kind == "midpoint":
+            expected = {
+                "constraint_id",
+                "kind",
+                "first_point_id",
+                "second_point_id",
+                "midpoint_point_id",
+            }
+            if set(raw) != expected:
+                rendered = ", ".join(sorted(expected))
+                raise InputError(f"{field} midpoint constraint must contain exactly {rendered}")
+            first = _safe_id(raw, "first_point_id", field)
+            second = _safe_id(raw, "second_point_id", field)
+            midpoint = _safe_id(raw, "midpoint_point_id", field)
+            if len({first, second, midpoint}) != 3:
+                raise InputError(f"{field} must reference three different points")
+            return cls(
+                constraint_id, kind, None, first, second, None, None, None, midpoint
+            )
         if kind == "fixed":
             expected = {"constraint_id", "kind", "point_id", "x", "y"}
             if set(raw) != expected:
@@ -185,6 +233,8 @@ class SketchConstraint:
             return (self.point_id,)
         assert self.first_point_id is not None
         assert self.second_point_id is not None
+        if self.midpoint_point_id is not None:
+            return (self.first_point_id, self.second_point_id, self.midpoint_point_id)
         return (self.first_point_id, self.second_point_id)
 
     def as_dict(self) -> dict[str, Any]:
@@ -206,6 +256,8 @@ class SketchConstraint:
             )
             if self.distance is not None:
                 document["distance"] = self.distance.as_dict()
+            if self.midpoint_point_id is not None:
+                document["midpoint_point_id"] = self.midpoint_point_id
         return document
 
 
@@ -255,7 +307,7 @@ class SketchProfile:
         schema_version: str = SKETCH_EXTRUSION_SCHEMA,
     ) -> SketchProfile:
         expected = {"outer_loop", "inner_loops"}
-        if schema_version == SKETCH_EXTRUSION_SCHEMA_V2:
+        if schema_version in _CIRCULAR_SCHEMAS:
             expected.add("circular_holes")
         if not isinstance(raw, dict) or set(raw) != expected:
             rendered = ", ".join(sorted(expected))
@@ -299,7 +351,7 @@ class SketchProfile:
             "outer_loop": list(self.outer_loop),
             "inner_loops": [list(loop) for loop in self.inner_loops],
         }
-        if schema_version == SKETCH_EXTRUSION_SCHEMA_V2:
+        if schema_version in _CIRCULAR_SCHEMAS:
             document["circular_holes"] = [circle.as_dict() for circle in self.circular_holes]
         return document
 
@@ -370,7 +422,9 @@ class SketchExtrusion:
         if not isinstance(constraints_raw, list) or not constraints_raw:
             raise InputError(f"{field}.constraints must be a non-empty list")
         constraints = tuple(
-            SketchConstraint.from_dict(item, field=f"{field}.constraints[{index}]")
+            SketchConstraint.from_dict(
+                item, field=f"{field}.constraints[{index}]", schema_version=schema
+            )
             for index, item in enumerate(constraints_raw)
         )
         constraint_ids = [item.constraint_id for item in constraints]
@@ -479,6 +533,18 @@ def solve_constraints(
             equation({(constraint.point_id, "y"): 1}, _mm_fraction(constraint.y))
             continue
         assert constraint.first_point_id and constraint.second_point_id
+        if constraint.kind == "midpoint":
+            assert constraint.midpoint_point_id
+            for axis in _AXES:
+                equation(
+                    {
+                        (constraint.first_point_id, axis): -1,
+                        (constraint.second_point_id, axis): -1,
+                        (constraint.midpoint_point_id, axis): 2,
+                    },
+                    Fraction(0),
+                )
+            continue
         axis = "y" if constraint.kind == "horizontal" else "x"
         result = Fraction(0)
         if constraint.kind in {"offset_x", "offset_y"}:
@@ -1086,11 +1152,7 @@ def compile_sketch_extrusion(
         artifact_descriptor(svg_path, "image/svg+xml", "drawing"),
     ]
     content = {
-        "schema_version": (
-            SKETCH_BUNDLE_SCHEMA
-            if sketch.schema_version == SKETCH_EXTRUSION_SCHEMA
-            else SKETCH_BUNDLE_SCHEMA_V2
-        ),
+        "schema_version": _BUNDLE_SCHEMA_BY_SKETCH_SCHEMA[sketch.schema_version],
         "qualification": "unqualified_demonstration",
         "sketch_digest": sketch.sketch_digest,
         "material_digest": sketch.material.material_digest,
@@ -1146,11 +1208,7 @@ def verify_sketch_bundle(bundle_path: str | Path) -> dict[str, str]:
         raise IntegrityError("embedded sketch does not match its declared digest")
     if sketch.material.material_digest != content.get("material_digest"):
         raise IntegrityError("embedded sketch material does not match its declared digest")
-    expected_bundle_schema = (
-        SKETCH_BUNDLE_SCHEMA
-        if sketch.schema_version == SKETCH_EXTRUSION_SCHEMA
-        else SKETCH_BUNDLE_SCHEMA_V2
-    )
+    expected_bundle_schema = _BUNDLE_SCHEMA_BY_SKETCH_SCHEMA[sketch.schema_version]
     if content.get("schema_version") != expected_bundle_schema:
         raise IntegrityError("sketch and bundle schema versions do not correspond")
     analysis, _ = analyze_sketch_extrusion(sketch)

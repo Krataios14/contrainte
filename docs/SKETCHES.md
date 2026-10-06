@@ -1,6 +1,6 @@
 # Constrained sketch extrusions
 
-The `contrainte.sketch-extrusion/0.1` contract turns a fully constrained, straight-line planar profile into a single Open CASCADE B-rep. The backward-compatible `contrainte.sketch-extrusion/0.2` contract adds exact-diameter circular through-holes whose centres are ordinary fully constrained sketch points. Both add editable dimensional intent without making a language model, a mesh, or an opaque kernel result the authority for the sketch dimensions.
+The `contrainte.sketch-extrusion/0.1` contract turns a fully constrained, straight-line planar profile into a single Open CASCADE B-rep. The backward-compatible `contrainte.sketch-extrusion/0.2` contract adds exact-diameter circular through-holes whose centres are ordinary fully constrained sketch points. The additive `contrainte.sketch-extrusion/0.3` contract keeps the 0.2 profile and adds one exact `midpoint` relation. All three add editable dimensional intent without making a language model, a mesh, or an opaque kernel result the authority for the sketch dimensions.
 
 The contracts deliberately separate two kinds of computation. Point coordinates, polygon areas, circular radii, clearance comparisons, and the rational coefficients of symbolic circular area and volume expressions are exact. Version 0.2 records those expressions in the form `rational_constant + pi * pi_coefficient`. A pinned 100-place decimal expansion of pi is used only to compare the expression with build123d and Open CASCADE; it is never presented as exact mathematical pi or as the engineering authority. Kernel volume must agree with the independent analytic comparison within a relative error of `0.00000001`.
 
@@ -10,7 +10,7 @@ A sketch extrusion contains exactly these top-level fields:
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | `contrainte.sketch-extrusion/0.1` or `contrainte.sketch-extrusion/0.2`. |
+| `schema_version` | `contrainte.sketch-extrusion/0.1`, `/0.2`, or `/0.3`. |
 | `part_id` | Stable, filesystem-safe part identity. |
 | `revision` | Source revision label. |
 | `title` | Human-readable description. |
@@ -19,10 +19,10 @@ A sketch extrusion contains exactly these top-level fields:
 | `limits` | Positive maximum mass and maximum XYZ bounding box. |
 | `points` | Canonically ordered point declarations. |
 | `constraints` | Canonically ordered linear constraint equations. |
-| `profile` | One outer polygon, inner polygon loops, and, in 0.2, canonically ordered circular holes. |
+| `profile` | One outer polygon, inner polygon loops, and, in 0.2 and 0.3, canonically ordered circular holes. |
 | `extrusion_distance` | Positive extrusion length. |
 
-Unknown fields are rejected. Point and constraint identifiers must be unique and ordered lexically. Each profile loop starts with its lexically lowest point identifier; inner loops are ordered by their first identifier. Version 0.2 requires a `circular_holes` list ordered by unique `circle_id`. Every circle contains exactly `circle_id`, `center_point_id`, and a positive length `diameter`. These canonical ordering rules make semantically identical documents converge on one content digest instead of allowing incidental list order to affect authority.
+Unknown fields are rejected. Point and constraint identifiers must be unique and ordered lexically. Each profile loop starts with its lexically lowest point identifier; inner loops are ordered by their first identifier. Versions 0.2 and 0.3 require a `circular_holes` list ordered by unique `circle_id`. Every circle contains exactly `circle_id`, `center_point_id`, and a positive length `diameter`. These canonical ordering rules make semantically identical documents converge on one content digest instead of allowing incidental list order to affect authority.
 
 ## Constraint language
 
@@ -48,6 +48,30 @@ The solver converts values to rational millimetres and performs Gaussian elimina
 
 The evidence report records the variable count, equation count, matrix rank, rational-arithmetic identity, and every solved coordinate.
 
+### Midpoint relation in version 0.3
+
+Version 0.3 accepts every 0.2 document shape and adds exactly one constraint kind:
+
+| Kind | Required data | Equation |
+| --- | --- | --- |
+| `midpoint` | `first_point_id`, `second_point_id`, `midpoint_point_id` | `2 * midpoint - first - second = 0` in X and in Y. |
+
+The three point IDs must be distinct, declared points. The relation adds two rational equations to the same elimination as every other constraint, so it is subject to the same rank, consistency, and redundancy rules. A midpoint combined with a fixed position for the same centre is redundant when it agrees and inconsistent when it does not. The midpoint of finite decimal endpoints is itself a finite decimal, so evidence stays exact.
+
+The intended use is locating a circular hole centre midway between two existing profile points. If those endpoints are re-dimensioned, the centre follows. Circle-centre containment and clearance checks then run on the derived position. For example:
+
+```json
+{
+  "constraint_id": "c15",
+  "kind": "midpoint",
+  "first_point_id": "p0",
+  "second_point_id": "h0",
+  "midpoint_point_id": "q0"
+}
+```
+
+Versions 0.1 and 0.2 keep their closed five-kind vocabulary and reject `midpoint`. Their parsing, serialization, digests, analyses, and bundles are unchanged. Input 0.3 produces `contrainte.sketch-bundle/0.3`. Its analysis fields and check list are the same as 0.2, because the relation changes how points are solved, not the geometry vocabulary.
+
 ### Circular holes in version 0.2
 
 A circular centre is declared in `points` and constrained with the same exact linear language as any polygon vertex. Every declared point must be used exactly once: as one polygon vertex or as one circular centre. A centre cannot be shared by circles or reused as a polygon vertex. Consequently, an omitted centre coordinate makes the whole sketch underconstrained rather than allowing the CAD kernel to infer a position.
@@ -68,7 +92,7 @@ The analytic area authority does not pretend that pi is rational. For circles wi
 
 ## Profile semantics
 
-In 0.1, every declared point must occur exactly once across the profile loops. In 0.2, it must occur exactly once across the loops and circle centres. The outer loop must be counter-clockwise; polygon holes must be clockwise. Loops must contain at least three distinct vertices and must not repeat the closing vertex.
+In 0.1, every declared point must occur exactly once across the profile loops. In 0.2 and 0.3, it must occur exactly once across the loops and circle centres. The outer loop must be counter-clockwise; polygon holes must be clockwise. Loops must contain at least three distinct vertices and must not repeat the closing vertex.
 
 The topology validator rejects self-intersection, intersections between loops, holes outside or touching the outer boundary, and nested or intersecting holes. Every polygon edge, circular diameter, and the extrusion distance must meet the manufacturing minimum feature size. Exact squared-distance comparisons enforce minimum clear material between non-adjacent polygon edges, the outer boundary and every hole, polygon holes and circles, and pairs of circles. Equality with the declared minimum passes; any smaller rational clearance fails before Open CASCADE is invoked.
 
@@ -98,11 +122,11 @@ A successful compile writes four files beside one another:
 - `<part_id>.svg`, a dimensionally derived profile drawing; and
 - `<part_id>.sketch-bundle.json`, the evidence bundle.
 
-Input 0.1 produces `contrainte.sketch-bundle/0.1`; input 0.2 produces `contrainte.sketch-bundle/0.2`. The verifier rejects cross-version substitution. Both pin the normalized sketch and material digests, complete analysis, kernel package versions, named passed checks, artifact roles, sizes, and SHA-256 hashes. Their own digest covers the entire bundle content.
+Input 0.1 produces `contrainte.sketch-bundle/0.1`; input 0.2 produces `contrainte.sketch-bundle/0.2`; input 0.3 produces `contrainte.sketch-bundle/0.3`. The verifier rejects cross-version substitution. Both pin the normalized sketch and material digests, complete analysis, kernel package versions, named passed checks, artifact roles, sizes, and SHA-256 hashes. Their own digest covers the entire bundle content.
 
 Verification is reproduction, not a checksum-only operation. It reparses the embedded sketch, solves every constraint, rebuilds and remeasures the B-rep, compares the full analysis and kernel identity, checks the exact expected check list, and verifies all three referenced artifacts.
 
-A verified sketch bundle can be passed to `contrainte component derive`. The resulting unqualified component manifest pins the source bundle, exact STEP geometry, mesh, drawing, and B-rep-derived bounds under the same release boundary as the other public CAD forms.
+A verified 0.1 or 0.2 sketch bundle can be passed to `contrainte component derive`. Component derivation does not yet accept `contrainte.sketch-bundle/0.3` and rejects it as an unsupported engineering bundle schema. `tests/test_release.py` pins that rejection. Adopting 0.3 is a separate release-boundary change. The resulting unqualified component manifest pins the source bundle, exact STEP geometry, mesh, drawing, and B-rep-derived bounds under the same release boundary as the other public CAD forms.
 
 ## CLI
 
@@ -120,7 +144,7 @@ The compile command prints the bundle digest. The verify command prints a JSON r
 
 ## Deliberate limits and nonclaims
 
-Neither version is a general 2D constraint solver or a full mechanical feature modeller. Version 0.2 provides circular through-holes, but not circular bosses or arbitrary circular outer profiles. The language does not provide arcs, ellipses, splines, tangency, angles, equal-length constraints, symmetry, construction geometry, reference dimensions, datum systems, fillets, chamfers, shells, lofts, sweeps, draft, threads, or partial-depth pockets.
+No version is a general 2D constraint solver or a full mechanical feature modeller. Version 0.2 provides circular through-holes, but not circular bosses or arbitrary circular outer profiles. Version 0.3's midpoint is a point-to-two-points linear relation. It is not general symmetry, a point-on-line or point-on-circle relation, a pattern, or a construction line. The language does not provide arcs, ellipses, splines, tangency, angles, equal-length constraints, symmetry, construction geometry, reference dimensions, datum systems, fillets, chamfers, shells, lofts, sweeps, draft, threads, or partial-depth pockets.
 
 The minimum-feature check covers nominal polygon edge length, circle diameter, extrusion distance, and exact nominal boundary separation. It does not establish tolerance-conditioned wall or ligament thickness, tool accessibility, internal-corner radius, cutter compensation, stock allowance, feeds and speeds, fixturing, surface finish, distortion, residual stress, or manufacturability for the named process.
 

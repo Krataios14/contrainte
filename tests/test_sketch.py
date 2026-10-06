@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from fractions import Fraction
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from contrainte.artifacts import file_digest
 from contrainte.canonical import digest, dumps_pretty, loads_strict
 from contrainte.errors import InputError, IntegrityError
 from contrainte.sketch import (
+    SketchConstraint,
     SketchExtrusion,
     SketchProfile,
     analyze_sketch_extrusion,
@@ -121,6 +123,36 @@ def circular_sketch_document() -> dict:
         },
     ]
     return document
+
+
+def midpoint(identifier: str, first: str, second: str, center: str) -> dict:
+    return {
+        "constraint_id": identifier,
+        "kind": "midpoint",
+        "first_point_id": first,
+        "second_point_id": second,
+        "midpoint_point_id": center,
+    }
+
+
+def midpoint_sketch_document() -> dict:
+    """The 0.2 circular plate with both centres located by midpoint relations.
+
+    q0 = (p0 + h0) / 2 = (10, 10) and q1 = (h2 + p2) / 2 = (90, 50), the same
+    centres the 0.2 fixture fixes explicitly.
+    """
+    document = circular_sketch_document()
+    document["schema_version"] = "contrainte.sketch-extrusion/0.3"
+    document["part_id"] = "plate.midpoint-sketch.demo"
+    document["title"] = "Plate with circular holes located by midpoint relations"
+    document["constraints"][14] = midpoint("c15", "p0", "h0", "q0")
+    document["constraints"][15] = midpoint("c16", "h2", "p2", "q1")
+    return document
+
+
+def solved_mm(document: dict) -> dict[str, tuple[Fraction, Fraction]]:
+    solved, _ = solve_constraints(SketchExtrusion.from_dict(document))
+    return solved
 
 
 class SketchExtrusionTests(unittest.TestCase):
@@ -466,6 +498,210 @@ class SketchExtrusionTests(unittest.TestCase):
             bundle_path = Path(directory) / "plate.circular-sketch.demo.sketch-bundle.json"
             bundle_path.write_text(dumps_pretty(bundle), encoding="utf-8", newline="\n")
 
+            with self.assertRaisesRegex(IntegrityError, "versions do not correspond"):
+                verify_sketch_bundle(bundle_path)
+
+    def test_v2_round_trip_is_unchanged_by_v3(self) -> None:
+        document = circular_sketch_document()
+
+        sketch = SketchExtrusion.from_dict(document)
+
+        self.assertEqual(sketch.as_dict(), document)
+        self.assertNotIn("midpoint_point_id", str(sketch.as_dict()))
+
+    def test_v3_midpoint_solves_exact_centres(self) -> None:
+        sketch = SketchExtrusion.from_dict(midpoint_sketch_document())
+
+        solved, report = solve_constraints(sketch)
+
+        self.assertEqual(solved["q0"], (Fraction(10), Fraction(10)))
+        self.assertEqual(solved["q1"], (Fraction(90), Fraction(50)))
+        self.assertEqual(solved, solved_mm(circular_sketch_document()))
+        self.assertEqual(report["status"], "fully_constrained")
+        self.assertEqual(report["variable_count"], 20)
+        self.assertEqual(report["equation_count"], 20)
+        self.assertEqual(report["rank"], 20)
+
+    def test_v3_round_trip_preserves_digest(self) -> None:
+        document = midpoint_sketch_document()
+        sketch = SketchExtrusion.from_dict(document)
+
+        reparsed = SketchExtrusion.from_dict(sketch.as_dict())
+
+        self.assertEqual(sketch.as_dict(), document)
+        self.assertEqual(sketch, reparsed)
+        self.assertEqual(sketch.sketch_digest, reparsed.sketch_digest)
+
+    def test_midpoint_follows_changed_endpoints(self) -> None:
+        document = midpoint_sketch_document()
+        document["constraints"][9]["distance"] = length("101")
+        self.assertEqual(solved_mm(document)["q1"], (Fraction(181, 2), Fraction(50)))
+
+        document = midpoint_sketch_document()
+        document["constraints"][0]["x"] = length("24")
+        document["constraints"][0]["y"] = length("22")
+        solved = solved_mm(document)
+        self.assertEqual(solved["q0"], (Fraction(12), Fraction(11)))
+        self.assertEqual(solved["q1"], (Fraction(92), Fraction(51)))
+
+        fixed_centres = circular_sketch_document()
+        fixed_centres["constraints"][9]["distance"] = length("101")
+        self.assertEqual(solved_mm(fixed_centres)["q1"], (Fraction(90), Fraction(50)))
+
+    def test_midpoint_halving_remains_finite_decimal_evidence(self) -> None:
+        document = midpoint_sketch_document()
+        document["constraints"][9]["distance"] = length("100.001")
+
+        _, report = solve_constraints(SketchExtrusion.from_dict(document))
+
+        q1 = next(item for item in report["solved_points_mm"] if item["point_id"] == "q1")
+        self.assertEqual(q1, {"point_id": "q1", "x": "90.0005", "y": "50"})
+
+    def test_midpoint_centre_clearance_tracks_endpoint_perturbation(self) -> None:
+        document = midpoint_sketch_document()
+        document["constraints"][4]["distance"] = length("30")
+        sketch = SketchExtrusion.from_dict(document)
+        self.assertEqual(solved_mm(sketch.as_dict())["q1"], (Fraction(90), Fraction(55)))
+
+        document["constraints"][4]["distance"] = length("30.002")
+        with self.assertRaisesRegex(InputError, "closer to outer_loop"):
+            SketchExtrusion.from_dict(document)
+
+    def test_midpoint_centre_topology_is_validated(self) -> None:
+        document = midpoint_sketch_document()
+        document["constraints"][14] = midpoint("c15", "p0", "p1", "q0")
+        with self.assertRaisesRegex(InputError, "center is not strictly inside"):
+            SketchExtrusion.from_dict(document)
+
+        document = midpoint_sketch_document()
+        document["constraints"][14] = midpoint("c15", "h0", "h2", "q0")
+        with self.assertRaisesRegex(InputError, "center lies in or on inner_loops"):
+            SketchExtrusion.from_dict(document)
+
+    def test_midpoint_omission_is_underconstrained(self) -> None:
+        document = midpoint_sketch_document()
+        document["constraints"].pop(14)
+
+        with self.assertRaisesRegex(InputError, "underconstrained.*q0.x, q0.y"):
+            SketchExtrusion.from_dict(document)
+
+    def test_midpoint_redundancy_is_rejected(self) -> None:
+        for extra in (
+            fixed("c99", "q0", "10", "10"),
+            midpoint("c17", "p0", "h0", "q0"),
+            midpoint("c17", "h0", "p0", "q0"),
+        ):
+            with self.subTest(extra=extra):
+                document = midpoint_sketch_document()
+                document["constraints"].append(extra)
+                with self.assertRaisesRegex(InputError, "redundant or overconstraining"):
+                    SketchExtrusion.from_dict(document)
+
+    def test_midpoint_inconsistency_is_rejected(self) -> None:
+        for extra in (
+            fixed("c99", "q0", "11", "10"),
+            midpoint("c17", "p1", "h1", "q0"),
+        ):
+            with self.subTest(extra=extra):
+                document = midpoint_sketch_document()
+                document["constraints"].append(extra)
+                with self.assertRaisesRegex(InputError, "inconsistent"):
+                    SketchExtrusion.from_dict(document)
+
+    def test_midpoint_requires_three_distinct_known_points(self) -> None:
+        for first, second, center in (
+            ("p0", "p0", "q0"),
+            ("p0", "h0", "p0"),
+            ("p0", "h0", "h0"),
+        ):
+            with self.subTest(points=(first, second, center)):
+                document = midpoint_sketch_document()
+                document["constraints"][14] = midpoint("c15", first, second, center)
+                with self.assertRaisesRegex(InputError, "three different points"):
+                    SketchExtrusion.from_dict(document)
+
+        document = midpoint_sketch_document()
+        document["constraints"][14] = midpoint("c15", "p0", "h0", "zz")
+        with self.assertRaisesRegex(InputError, "references unknown points: zz"):
+            SketchExtrusion.from_dict(document)
+
+    def test_midpoint_shape_is_closed(self) -> None:
+        document = midpoint_sketch_document()
+        del document["constraints"][14]["midpoint_point_id"]
+        with self.assertRaisesRegex(InputError, "midpoint constraint must contain exactly"):
+            SketchExtrusion.from_dict(document)
+
+        document = midpoint_sketch_document()
+        document["constraints"][14]["distance"] = length("0")
+        with self.assertRaisesRegex(InputError, "midpoint constraint must contain exactly"):
+            SketchExtrusion.from_dict(document)
+
+        document = midpoint_sketch_document()
+        document["constraints"][9]["midpoint_point_id"] = "q0"
+        with self.assertRaisesRegex(InputError, "offset_x constraint must contain exactly"):
+            SketchExtrusion.from_dict(document)
+
+    def test_legacy_versions_reject_midpoint(self) -> None:
+        document = midpoint_sketch_document()
+        document["schema_version"] = "contrainte.sketch-extrusion/0.2"
+        with self.assertRaisesRegex(InputError, "kind is unsupported: 'midpoint'"):
+            SketchExtrusion.from_dict(document)
+
+        document = sketch_document()
+        document["constraints"].append(midpoint("c99", "p0", "p2", "h0"))
+        with self.assertRaisesRegex(InputError, "kind is unsupported: 'midpoint'"):
+            SketchExtrusion.from_dict(document)
+
+        with self.assertRaisesRegex(InputError, "kind is unsupported: 'midpoint'"):
+            SketchConstraint.from_dict(
+                midpoint("c01", "p0", "p1", "q0"), field="constraint"
+            )
+
+    def test_v3_requires_circular_holes_field(self) -> None:
+        document = midpoint_sketch_document()
+        del document["profile"]["circular_holes"]
+
+        with self.assertRaisesRegex(InputError, "must contain exactly"):
+            SketchExtrusion.from_dict(document)
+
+    @unittest.skipUnless(find_spec("build123d"), "optional CAD backend is not installed")
+    def test_v3_bundle_reproduces_v2_geometry_and_rejects_version_substitution(
+        self,
+    ) -> None:
+        sketch = SketchExtrusion.from_dict(midpoint_sketch_document())
+        explicit, _ = analyze_sketch_extrusion(
+            SketchExtrusion.from_dict(circular_sketch_document())
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = compile_sketch_extrusion(sketch, directory)
+            bundle_path = Path(directory) / "plate.midpoint-sketch.demo.sketch-bundle.json"
+
+            report = verify_sketch_bundle(bundle_path)
+
+            self.assertEqual(report["status"], "verified")
+            content = bundle["content"]
+            self.assertEqual(content["schema_version"], "contrainte.sketch-bundle/0.3")
+            self.assertEqual(content["analysis"], explicit)
+            self.assertEqual(
+                [item["id"] for item in content["checks"]],
+                [
+                    "SKETCH-SCHEMA",
+                    "SKETCH-EXACT-LINEAR-CONSTRAINTS",
+                    "SKETCH-FULLY-CONSTRAINED",
+                    "SKETCH-SIMPLE-PROFILE-TOPOLOGY",
+                    "SKETCH-MINIMUM-FEATURE",
+                    "SKETCH-BREP-VALIDITY",
+                    "SKETCH-EXACT-CIRCULAR-DIMENSIONS",
+                    "SKETCH-CIRCULAR-CLEARANCE",
+                    "SKETCH-SYMBOLIC-AREA-PINNED-PI-VOLUME-CROSSCHECK",
+                    "SKETCH-MASS-LIMIT",
+                    "SKETCH-ENVELOPE-LIMIT",
+                ],
+            )
+
+            content["schema_version"] = "contrainte.sketch-bundle/0.2"
+            bundle["digest"] = digest(content)
+            bundle_path.write_text(dumps_pretty(bundle), encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(IntegrityError, "versions do not correspond"):
                 verify_sketch_bundle(bundle_path)
 
