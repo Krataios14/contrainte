@@ -1,8 +1,9 @@
 """Command line: ``python -m contrainte.physics``.
 
 Exit statuses: 0 success (evaluate: rules_satisfied), 2 usage, 3 input rejected,
-4 stale pin, 5 verification/integrity failure, 10 marginal_review_required,
-11 indeterminate, 12 rules_violated. Exit 10-12 still write and verify the report.
+4 stale pin, 5 verification/integrity failure, 6 output could not be written,
+10 marginal_review_required, 11 indeterminate, 12 rules_violated,
+13 considerations_review_required. Exit 10-13 still write and verify the report.
 """
 
 from __future__ import annotations
@@ -18,19 +19,22 @@ from ..errors import ContrainteError, IntegrityError
 from ._parse import StalePinError
 from .evaluate import (
     EXIT_BY_STATE,
+    OutputError,
     evaluate_documents,
     load_json,
     verify_bundle,
     verify_report,
     write_bundle,
 )
-from .groups import registry_description
-from .rules import parse_rule_set
+from .intent import INTENT_SCHEMA
+from .registry import registry_description
+from .rules import RULES_SCHEMA, parse_rule_set
 from .schema import SCHEMAS, schema_text
 
 EXIT_INPUT = 3
 EXIT_STALE_PIN = 4
 EXIT_INTEGRITY = 5
+EXIT_OUTPUT = 6
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -43,8 +47,8 @@ def _parser() -> argparse.ArgumentParser:
     evaluate = commands.add_parser(
         "evaluate", help="evaluate an intent and write a verified report bundle"
     )
-    evaluate.add_argument("intent", help="contrainte.physics-intent/0.1 JSON file")
-    evaluate.add_argument("rules", help="contrainte.applicability-rules/0.1 JSON file")
+    evaluate.add_argument("intent", help=f"{INTENT_SCHEMA} JSON file")
+    evaluate.add_argument("rules", help=f"{RULES_SCHEMA} JSON file")
     evaluate.add_argument(
         "--output-dir", "-o", required=True, help="directory for the retained bundle"
     )
@@ -63,9 +67,12 @@ def _parser() -> argparse.ArgumentParser:
     )
 
     pin = commands.add_parser("rules-pin", help="print the pin object for a rule set")
-    pin.add_argument("rules", help="contrainte.applicability-rules/0.1 JSON file")
+    pin.add_argument("rules", help=f"{RULES_SCHEMA} JSON file")
 
-    commands.add_parser("groups", help="print the dimensionless-group registry")
+    commands.add_parser(
+        "groups",
+        help="print the applicability registry (units, group forms, model-form table)",
+    )
 
     schema = commands.add_parser("schema", help="print or write a JSON Schema")
     schema.add_argument("name", choices=sorted(SCHEMAS))
@@ -83,6 +90,13 @@ def _summary(report: dict) -> dict:
         "controlled_review_readiness": report["controlled_review_readiness"]["state"],
         "report_digest": report["report_digest"],
     }
+
+
+def _write_text(path: str, text: str) -> None:
+    try:
+        Path(path).write_text(text, encoding="utf-8", newline="\n")
+    except OSError as exc:
+        raise OutputError(f"cannot write {path}: {exc.strerror or exc}") from exc
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -119,7 +133,7 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "schema":
         text = schema_text(args.name)
         if args.output:
-            Path(args.output).write_text(text, encoding="utf-8", newline="\n")
+            _write_text(args.output, text)
         else:
             sys.stdout.write(text)
         return 0
@@ -136,8 +150,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     except IntegrityError as exc:
         print(f"integrity failure: {exc}", file=sys.stderr)
         return EXIT_INTEGRITY
+    except OutputError as exc:
+        print(f"output failure: {exc}", file=sys.stderr)
+        return EXIT_OUTPUT
     except ContrainteError as exc:
         print(f"input rejected: {exc}", file=sys.stderr)
+        return EXIT_INPUT
+    except (RecursionError, UnicodeError) as exc:
+        # Defence in depth: decoding paths already map these; never surface a traceback.
+        print(f"input rejected: {type(exc).__name__}", file=sys.stderr)
         return EXIT_INPUT
 
 

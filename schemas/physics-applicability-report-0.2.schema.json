@@ -1,6 +1,6 @@
 {
   "$comment": "Structural schema only. JSON Schema treats 1.0 as an integer and cannot see JSON lexical form; the strict loader rejects every float literal and the parser enforces units, references, bands, digests and pins.",
-  "$id": "https://contrainte.dev/schemas/physics-applicability-report-0.1.schema.json",
+  "$id": "https://contrainte.dev/schemas/physics-applicability-report-0.2.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -8,6 +8,7 @@
       "enum": [
         "rules_satisfied",
         "marginal_review_required",
+        "considerations_review_required",
         "indeterminate",
         "rules_violated"
       ]
@@ -376,7 +377,10 @@
     "kernel": {
       "additionalProperties": false,
       "properties": {
-        "group_registry": {
+        "package": {
+          "const": "contrainte.physics"
+        },
+        "registry": {
           "additionalProperties": false,
           "properties": {
             "digest": {
@@ -384,7 +388,7 @@
               "type": "string"
             },
             "version": {
-              "const": "contrainte.dimensionless-groups/0.1"
+              "const": "contrainte.applicability-registry/0.2"
             }
           },
           "required": [
@@ -392,14 +396,11 @@
             "digest"
           ],
           "type": "object"
-        },
-        "package": {
-          "const": "contrainte.physics"
         }
       },
       "required": [
         "package",
-        "group_registry"
+        "registry"
       ],
       "type": "object"
     },
@@ -407,6 +408,23 @@
       "items": {
         "additionalProperties": false,
         "properties": {
+          "missing_required_groups": {
+            "items": {
+              "enum": [
+                "beam_slenderness",
+                "biot",
+                "density_variation",
+                "knudsen",
+                "mach",
+                "reynolds",
+                "shell_thickness_ratio",
+                "time_scale_ratio"
+              ]
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
           "model_form": {
             "enum": [
               "euler_bernoulli_beam",
@@ -427,6 +445,23 @@
               "quasi_static"
             ]
           },
+          "required_groups": {
+            "items": {
+              "enum": [
+                "beam_slenderness",
+                "biot",
+                "density_variation",
+                "knudsen",
+                "mach",
+                "reynolds",
+                "shell_thickness_ratio",
+                "time_scale_ratio"
+              ]
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
           "rule_ids": {
             "items": {
               "pattern": "^(RULE)-[A-Z0-9]+(-[A-Z0-9]+)*$",
@@ -441,14 +476,37 @@
               "marginal",
               "violated",
               "indeterminate",
-              "no_rule"
+              "no_rule",
+              "considerations_unevaluated"
             ]
+          },
+          "unevaluated_considerations": {
+            "items": {
+              "enum": [
+                "contact",
+                "geometric_change",
+                "local_stress_needs",
+                "material_behavior",
+                "no_kernel_applicability_criteria",
+                "separation",
+                "strain_magnitude",
+                "target_quantity_sensitivity",
+                "through_thickness_effects",
+                "wall_treatment"
+              ]
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
           "model_form",
           "state",
-          "rule_ids"
+          "rule_ids",
+          "required_groups",
+          "missing_required_groups",
+          "unevaluated_considerations"
         ],
         "type": "object"
       },
@@ -801,7 +859,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "contrainte.physics-applicability-report/0.1"
+      "const": "contrainte.physics-applicability-report/0.2"
     },
     "unsupported": {
       "additionalProperties": false,
@@ -900,6 +958,6 @@
     "unsupported",
     "report_digest"
   ],
-  "title": "contrainte.physics-applicability-report/0.1",
+  "title": "contrainte.physics-applicability-report/0.2",
   "type": "object"
 }

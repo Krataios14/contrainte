@@ -10,27 +10,32 @@ from .evaluate import (
     CLAIM_BOUNDARY,
     EXIT_BY_STATE,
     REPORT_SCHEMA,
+    OutputError,
     evaluate,
     evaluate_documents,
     verify_bundle,
     verify_report,
     write_bundle,
 )
-from .groups import FORMS, GROUP_REGISTRY_VERSION, registry_description, registry_digest
+from .groups import FORMS
 from .intent import INTENT_SCHEMA, PhysicsIntent, parse_intent
-from .rules import RULES_SCHEMA, ModelForm, RuleSet, parse_rule_set
+from .model_forms import MODEL_FORMS, ModelForm
+from .registry import REGISTRY_VERSION, registry_description, registry_digest
+from .rules import RULES_SCHEMA, RuleSet, parse_rule_set
 
 __all__ = [
     "CLAIM_BOUNDARY",
     "EXIT_BY_STATE",
     "FORMS",
-    "GROUP_REGISTRY_VERSION",
     "INTENT_SCHEMA",
+    "MODEL_FORMS",
     "QUANTITY_SCHEMA",
+    "REGISTRY_VERSION",
     "REPORT_SCHEMA",
     "RULES_SCHEMA",
     "DimensionalQuantity",
     "ModelForm",
+    "OutputError",
     "PhysicsIntent",
     "RuleSet",
     "StalePinError",

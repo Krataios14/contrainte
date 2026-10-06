@@ -16,9 +16,9 @@
       "title": "Illustrative applicability thresholds"
     }
   ],
-  "group_registry": {
-    "digest": "sha256:cf1d611a3bb68912af20d0c5b70ae4dd320add18c1137beb1385c8356c034a91",
-    "version": "contrainte.dimensionless-groups/0.1"
+  "registry": {
+    "digest": "sha256:e4819c8c582cb4e2e6c5df675a47bb1c5a396384f5470ce897e1fde6579a4f8b",
+    "version": "contrainte.applicability-registry/0.2"
   },
   "revision": "1",
   "rule_set_id": "RULESET-ILLUSTRATIVE-SCREENING",
@@ -442,6 +442,6 @@
       "title": "Thin-shell theory requires small thickness-to-radius ratio"
     }
   ],
-  "schema_version": "contrainte.applicability-rules/0.1",
+  "schema_version": "contrainte.applicability-rules/0.2",
   "title": "Illustrative screening applicability rules (synthetic thresholds, not for engineering use)"
 }

@@ -14,7 +14,42 @@ MAX_TEXT = 4000
 
 
 class StalePinError(InputError):
-    """Raised when a pinned rule set or group registry does not match the supplied one."""
+    """Raised when a pinned rule set or registry does not match the supplied one."""
+
+
+def require_unicode_text(raw: Any, field: str) -> None:
+    """Reject strings (keys or values) that cannot be encoded as UTF-8, such as lone surrogates.
+
+    Iterative so that deeply nested input cannot exhaust the interpreter stack.
+    """
+
+    pending = [raw]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, dict):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
+        elif isinstance(item, str):
+            try:
+                item.encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise InputError(
+                    f"{field} contains text that is not valid Unicode (lone surrogate)"
+                ) from exc
+
+
+def schema_version(
+    raw: Any, field: str, current: str, superseded: tuple[str, ...]
+) -> None:
+    value = raw.get("schema_version") if isinstance(raw, dict) else None
+    if value in superseded:
+        raise InputError(
+            f"{field} schema {value!r} is a superseded unpublished draft; use {current!r}"
+        )
+    if value != current:
+        raise InputError(f"unsupported {field} schema: {value!r}")
 
 
 def identifier_pattern(*prefixes: str) -> re.Pattern[str]:

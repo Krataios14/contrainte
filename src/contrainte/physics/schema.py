@@ -12,7 +12,7 @@ from typing import Any
 
 from .dimensional import KINDS, UNITS
 from .evaluate import REPORT_SCHEMA
-from .groups import FORMS, GROUP_REGISTRY_VERSION
+from .groups import FORMS
 from .intent import (
     INTENT_SCHEMA,
     AssumptionStatus,
@@ -35,7 +35,9 @@ from .intent import (
     UncertaintyCategory,
     ValidationStatus,
 )
-from .rules import RULES_SCHEMA, AuthoringStatus, CitationKind, ModelForm
+from .model_forms import MODEL_FORMS, ModelForm
+from .registry import REGISTRY_VERSION
+from .rules import RULES_SCHEMA, AuthoringStatus, CitationKind
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 _COMMENT = (
@@ -96,12 +98,22 @@ _GEOMETRY_REF = _id("FEA", "OCC", "SUR")
 _EVIDENCE_REF = _id("EVD")
 _GROUP_IDS = sorted({form.group_id for form in FORMS.values()})
 _FORM_IDS = sorted(FORMS)
+_CONSIDERATION_IDS = sorted(
+    {
+        item.consideration_id
+        for entry in MODEL_FORMS.values()
+        for item in entry.unevaluated
+    }
+)
+_REGISTRY_PIN = _closed(
+    {"version": {"const": REGISTRY_VERSION}, "digest": _DIGEST_SCHEMA}
+)
 
 
 def intent_schema() -> dict[str, Any]:
     return {
         "$schema": DIALECT,
-        "$id": "https://contrainte.dev/schemas/physics-intent-0.1.schema.json",
+        "$id": "https://contrainte.dev/schemas/physics-intent-0.2.schema.json",
         "title": INTENT_SCHEMA,
         "$comment": _COMMENT,
         **_closed(
@@ -378,7 +390,7 @@ _INTERVAL = _closed({"lower": _BOUND, "upper": _BOUND})
 def rules_schema() -> dict[str, Any]:
     return {
         "$schema": DIALECT,
-        "$id": "https://contrainte.dev/schemas/applicability-rules-0.1.schema.json",
+        "$id": "https://contrainte.dev/schemas/applicability-rules-0.2.schema.json",
         "title": RULES_SCHEMA,
         "$comment": _COMMENT,
         **_closed(
@@ -390,12 +402,7 @@ def rules_schema() -> dict[str, Any]:
                 "authoring": _closed(
                     {"owner": _TEXT, "status": _enum(AuthoringStatus)}
                 ),
-                "group_registry": _closed(
-                    {
-                        "version": {"const": GROUP_REGISTRY_VERSION},
-                        "digest": _DIGEST_SCHEMA,
-                    }
-                ),
+                "registry": _REGISTRY_PIN,
                 "citations": _list(
                     _closed(
                         {
@@ -478,7 +485,7 @@ def report_schema() -> dict[str, Any]:
     nullable_value = {"oneOf": [{"type": "null"}, _EXACT_VALUE]}
     return {
         "$schema": DIALECT,
-        "$id": "https://contrainte.dev/schemas/physics-applicability-report-0.1.schema.json",
+        "$id": "https://contrainte.dev/schemas/physics-applicability-report-0.2.schema.json",
         "title": REPORT_SCHEMA,
         "$comment": _COMMENT,
         **_closed(
@@ -487,12 +494,7 @@ def report_schema() -> dict[str, Any]:
                 "kernel": _closed(
                     {
                         "package": {"const": "contrainte.physics"},
-                        "group_registry": _closed(
-                            {
-                                "version": {"const": GROUP_REGISTRY_VERSION},
-                                "digest": _DIGEST_SCHEMA,
-                            }
-                        ),
+                        "registry": _REGISTRY_PIN,
                     }
                 ),
                 "inputs": _closed(
@@ -593,9 +595,17 @@ def report_schema() -> dict[str, Any]:
                                     "violated",
                                     "indeterminate",
                                     "no_rule",
+                                    "considerations_unevaluated",
                                 ]
                             },
                             "rule_ids": _list(_id("RULE")),
+                            "required_groups": _list({"enum": _GROUP_IDS}, unique=True),
+                            "missing_required_groups": _list(
+                                {"enum": _GROUP_IDS}, unique=True
+                            ),
+                            "unevaluated_considerations": _list(
+                                {"enum": _CONSIDERATION_IDS}, unique=True
+                            ),
                         }
                     ),
                     1,
@@ -604,6 +614,7 @@ def report_schema() -> dict[str, Any]:
                     "enum": [
                         "rules_satisfied",
                         "marginal_review_required",
+                        "considerations_review_required",
                         "indeterminate",
                         "rules_violated",
                     ]
@@ -668,9 +679,9 @@ def report_schema() -> dict[str, Any]:
 
 
 SCHEMAS = {
-    "intent": ("physics-intent-0.1.schema.json", intent_schema),
-    "rules": ("applicability-rules-0.1.schema.json", rules_schema),
-    "report": ("physics-applicability-report-0.1.schema.json", report_schema),
+    "intent": ("physics-intent-0.2.schema.json", intent_schema),
+    "rules": ("applicability-rules-0.2.schema.json", rules_schema),
+    "report": ("physics-applicability-report-0.2.schema.json", report_schema),
 }
 
 

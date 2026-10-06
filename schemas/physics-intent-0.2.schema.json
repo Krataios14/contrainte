@@ -1,6 +1,6 @@
 {
   "$comment": "Structural schema only. JSON Schema treats 1.0 as an integer and cannot see JSON lexical form; the strict loader rejects every float literal and the parser enforces units, references, bands, digests and pins.",
-  "$id": "https://contrainte.dev/schemas/physics-intent-0.1.schema.json",
+  "$id": "https://contrainte.dev/schemas/physics-intent-0.2.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -1171,7 +1171,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "contrainte.physics-intent/0.1"
+      "const": "contrainte.physics-intent/0.2"
     },
     "target_outputs": {
       "items": {
@@ -1518,6 +1518,6 @@
     "assumptions",
     "rule_set_pin"
   ],
-  "title": "contrainte.physics-intent/0.1",
+  "title": "contrainte.physics-intent/0.2",
   "type": "object"
 }

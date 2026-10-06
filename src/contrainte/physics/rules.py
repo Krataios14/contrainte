@@ -1,4 +1,4 @@
-"""Versioned, citation-bound applicability rules (``contrainte.applicability-rules/0.1``)."""
+"""Versioned, citation-bound applicability rules (``contrainte.applicability-rules/0.2``)."""
 
 from __future__ import annotations
 
@@ -12,32 +12,16 @@ from ..errors import InputError, IntegrityError
 from ..evidence import require_zoned_timestamp
 from . import _parse as p
 from .dimensional import parse_exact
-from .groups import GROUP_REGISTRY_VERSION, GroupForm, registry_digest, require_form
+from .groups import GroupForm, require_form
+from .model_forms import MODEL_FORMS, ModelForm
+from .registry import REGISTRY_VERSION, registry_digest
 
-RULES_SCHEMA = "contrainte.applicability-rules/0.1"
+RULES_SCHEMA = "contrainte.applicability-rules/0.2"
+SUPERSEDED_RULES_SCHEMAS = ("contrainte.applicability-rules/0.1",)
 
 RULE_SET_ID = p.identifier_pattern("RULESET")
 RULE_ID = p.identifier_pattern("RULE")
 EVIDENCE_ID = p.identifier_pattern("EVD")
-
-
-class ModelForm(str, Enum):
-    EULER_BERNOULLI_BEAM = "euler_bernoulli_beam"
-    TIMOSHENKO_BEAM = "timoshenko_beam"
-    THIN_SHELL = "thin_shell"
-    CONTINUUM_SOLID = "continuum_solid"
-    LINEAR_ELASTIC = "linear_elastic"
-    INCOMPRESSIBLE_FLOW = "incompressible_flow"
-    COMPRESSIBLE_FLOW = "compressible_flow"
-    LAMINAR_FLOW = "laminar_flow"
-    TURBULENT_FLOW = "turbulent_flow"
-    CONTINUUM_FLOW = "continuum_flow"
-    RAREFIED_FLOW = "rarefied_flow"
-    LUMPED_CAPACITANCE_THERMAL = "lumped_capacitance_thermal"
-    DISTRIBUTED_CONDUCTION_THERMAL = "distributed_conduction_thermal"
-    STEADY_STATE = "steady_state"
-    TRANSIENT_RESPONSE = "transient_response"
-    QUASI_STATIC = "quasi_static"
 
 
 class AuthoringStatus(str, Enum):
@@ -229,6 +213,12 @@ def _rule(raw: Any, field: str, citations: dict[str, Citation]) -> Rule:
     model_form = p.enum(raw, "model_form", field, ModelForm)
     group = p.obj(raw["group"], f"{field}.group", ("group_id", "form_id"))
     form = require_form(group["group_id"], group["form_id"], f"{field}.group")
+    admissible = MODEL_FORMS[model_form].admissible_groups
+    if form.group_id not in admissible:
+        raise InputError(
+            f"{field}: group {form.group_id!r} is not admissible for model form {model_form.value!r} "
+            f"under {REGISTRY_VERSION} (admissible: {', '.join(admissible) or 'none'})"
+        )
     bands = p.obj(raw["bands"], f"{field}.bands", ("valid", "marginal"))
     valid = tuple(
         _interval(item, f"{field}.bands.valid[{index}]")
@@ -272,6 +262,8 @@ def _rule(raw: Any, field: str, citations: dict[str, Citation]) -> Rule:
 
 def parse_rule_set(raw: Any) -> RuleSet:
     field = "rule_set"
+    p.require_unicode_text(raw, field)
+    p.schema_version(raw, "applicability-rules", RULES_SCHEMA, SUPERSEDED_RULES_SCHEMAS)
     raw = p.obj(
         raw,
         field,
@@ -281,32 +273,26 @@ def parse_rule_set(raw: Any) -> RuleSet:
             "revision",
             "title",
             "authoring",
-            "group_registry",
+            "registry",
             "citations",
             "rules",
         ),
     )
-    if raw["schema_version"] != RULES_SCHEMA:
-        raise InputError(
-            f"unsupported applicability-rules schema: {raw['schema_version']!r}"
-        )
     rule_set_id = p.ident(raw, "rule_set_id", field, RULE_SET_ID)
     revision = p.text(raw, "revision", field)
     p.text(raw, "title", field)
     authoring = p.obj(raw["authoring"], f"{field}.authoring", ("owner", "status"))
     p.text(authoring, "owner", f"{field}.authoring")
     p.enum(authoring, "status", f"{field}.authoring", AuthoringStatus)
-    registry = p.obj(
-        raw["group_registry"], f"{field}.group_registry", ("version", "digest")
-    )
-    p.digest_text(registry, "digest", f"{field}.group_registry")
+    registry = p.obj(raw["registry"], f"{field}.registry", ("version", "digest"))
+    p.digest_text(registry, "digest", f"{field}.registry")
     if (
-        registry["version"] != GROUP_REGISTRY_VERSION
+        registry["version"] != REGISTRY_VERSION
         or registry["digest"] != registry_digest()
     ):
         raise p.StalePinError(
-            f"{field}.group_registry pins {registry['version']!r} {registry['digest']!r}; "
-            f"this kernel provides {GROUP_REGISTRY_VERSION!r} {registry_digest()!r}"
+            f"{field}.registry pins {registry['version']!r} {registry['digest']!r}; "
+            f"this kernel provides {REGISTRY_VERSION!r} {registry_digest()!r}"
         )
     citation_list = [
         _citation(item, f"{field}.citations[{index}]")

@@ -14,6 +14,9 @@ from contrainte.errors import DimensionalityError, InputError, IntegrityError
 from contrainte.physics import (
     CLAIM_BOUNDARY,
     FORMS,
+    MODEL_FORMS,
+    REGISTRY_VERSION,
+    ModelForm,
     StalePinError,
     evaluate_documents,
     parse_intent,
@@ -32,6 +35,7 @@ from contrainte.physics.dimensional import (
 )
 from contrainte.physics.evaluate import INTENT_FILE, REPORT_FILE
 from contrainte.physics.groups import compute_group
+from contrainte.physics.registry import registry_description
 from contrainte.physics.schema import SCHEMAS, schema_text
 from contrainte.units import Quantity
 
@@ -125,6 +129,14 @@ def _qualified_clean() -> tuple[dict, dict]:
         ],
     }
     return _repin(intent, rules), rules
+
+
+def _qualified_supported() -> tuple[dict, dict]:
+    """``_qualified_clean`` with the inputs' cited evidence recorded as a real measurement record."""
+
+    intent, rules = _qualified_clean()
+    intent["evidence"][0]["kind"] = "measurement_record"
+    return intent, rules
 
 
 class DimensionalQuantityTests(unittest.TestCase):
@@ -229,9 +241,7 @@ class DimensionalQuantityTests(unittest.TestCase):
 class GroupRegistryTests(unittest.TestCase):
     def test_registry_is_dimensionless_and_pinned_by_example(self) -> None:
         self.assertEqual(registry_digest(), registry_digest())
-        self.assertEqual(
-            _load(RULES_PATH)["group_registry"]["digest"], registry_digest()
-        )
+        self.assertEqual(_load(RULES_PATH)["registry"]["digest"], registry_digest())
         self.assertEqual(
             {form.group_id for form in FORMS.values()},
             {
@@ -522,10 +532,10 @@ class RuleSetTests(unittest.TestCase):
                 self._rejects(InputError, "positive integer")
 
     def test_stale_registry_pin_is_rejected(self) -> None:
-        self.rules["group_registry"]["digest"] = "sha256:" + "0" * 64
-        self._rejects(StalePinError, "group_registry")
+        self.rules["registry"]["digest"] = "sha256:" + "0" * 64
+        self._rejects(StalePinError, "registry")
         self.rules = _load(RULES_PATH)
-        self.rules["group_registry"]["version"] = "contrainte.dimensionless-groups/0.0"
+        self.rules["registry"]["version"] = "contrainte.applicability-registry/0.1"
         self._rejects(StalePinError)
 
     def test_citation_excerpt_tamper_is_integrity_failure(self) -> None:
@@ -828,10 +838,48 @@ class EvaluationTests(unittest.TestCase):
         )
         self.assertFalse(report["authority_promotion_permitted"])
 
-    def test_qualified_mode_clean_rules_still_has_structural_blockers_only(
+    def test_qualified_mode_clean_rules_with_synthetic_inputs_is_not_ready(
         self,
     ) -> None:
+        # Review finding B2/F2a: every bound input cites only synthetic evidence and an open assumption.
         report = evaluate_documents(*_qualified_clean())
+        self.assertEqual(report["applicability_state"], "rules_satisfied")
+        # Every scale bound in any group declaration feeds a computed group and is gated.
+        bound = {
+            "SCL-FLOW-SPEED",
+            "SCL-SPEED-OF-SOUND",
+            "SCL-DENSITY-CHANGE",
+            "SCL-AIR-DENSITY",
+            "SCL-DUCT-DIAMETER",
+            "SCL-AIR-VISCOSITY",
+            "SCL-MEAN-FREE-PATH",
+        }
+        for gate in (
+            report["qualified_execution"]["blockers"],
+            report["controlled_review_readiness"]["blockers"],
+        ):
+            subjects = [
+                item["subject"]
+                for item in gate
+                if item["code"] == "INPUT_SUPPORT_NOT_QUALIFYING"
+            ]
+            self.assertEqual(sorted(subjects), sorted(bound))
+        # The unbound environment scale (inlet pressure) is reported but not gated.
+        self.assertNotIn(
+            "SCL-INLET-PRESSURE",
+            {
+                item["subject"]
+                for item in report["controlled_review_readiness"]["blockers"]
+            },
+        )
+        self.assertEqual(report["controlled_review_readiness"]["state"], "blocked")
+        self.assertIn("SYNTHETIC_INPUT_EVIDENCE", _codes(report["warnings"]))
+        self.assertEqual(report["output_label"], "non_release")
+
+    def test_qualified_mode_clean_rules_supported_inputs_has_structural_blockers_only(
+        self,
+    ) -> None:
+        report = evaluate_documents(*_qualified_supported())
         self.assertEqual(report["applicability_state"], "rules_satisfied")
         self.assertEqual(
             _codes(report["qualified_execution"]["blockers"]), STRUCTURAL_BLOCKERS
@@ -840,11 +888,11 @@ class EvaluationTests(unittest.TestCase):
             report["controlled_review_readiness"],
             {"state": "ready_for_independent_review", "blockers": []},
         )
-        self.assertEqual(report["output_label"], "non_release")
+        self.assertEqual(report["warnings"], [])
 
     def _knudsen_report(self, mean_free_path_mm: str) -> dict:
         # Duct diameter is 100 mm, so Kn = mean_free_path_mm / 100 against valid [0, 0.01), marginal [0.01, 0.1).
-        intent, rules = _qualified_clean()
+        intent, rules = _qualified_supported()
         _scale(intent, "SCL-MEAN-FREE-PATH")["quantity"] = {
             "value": mean_free_path_mm,
             "unit": "mm",
@@ -912,7 +960,7 @@ class EvaluationTests(unittest.TestCase):
                     self.assertEqual(qualified, STRUCTURAL_BLOCKERS)
 
     def test_gate_inputs_create_blockers(self) -> None:
-        intent, rules = _qualified_clean()
+        intent, rules = _qualified_supported()
         intent["candidate_model_forms"].append("turbulent_flow")
         _scale(intent, "SCL-MEAN-FREE-PATH")["basis"] = "ai_proposed"
         intent["assumptions"][0]["critical"] = True
@@ -920,13 +968,26 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["applicability_state"], "indeterminate")
         self.assertEqual(
             report["model_form_outcomes"][-1],
-            {"model_form": "turbulent_flow", "state": "no_rule", "rule_ids": []},
+            {
+                "model_form": "turbulent_flow",
+                "state": "no_rule",
+                "rule_ids": [],
+                "required_groups": ["reynolds"],
+                "missing_required_groups": ["reynolds"],
+                "unevaluated_considerations": [
+                    "wall_treatment",
+                    "separation",
+                    "target_quantity_sensitivity",
+                ],
+            },
         )
         controlled = _codes(report["controlled_review_readiness"]["blockers"])
         self.assertEqual(
             controlled,
             {
                 "MODEL_FORM_WITHOUT_RULE",
+                "REQUIRED_GROUP_NOT_COVERED",
+                "CONSIDERATION_NOT_EVALUATED",
                 "AI_PROPOSED_INPUT",
                 "OPEN_CRITICAL_ASSUMPTION",
             },
@@ -1038,8 +1099,18 @@ class SchemaTests(unittest.TestCase):
             evaluate_documents(intent, rules),
             evaluate_documents(_load(BRACKET_PATH), rules),
             evaluate_documents(*_qualified_clean()),
+            evaluate_documents(*_qualified_supported()),
+            evaluate_documents(*_turbulent_case()),
         ):
             validators["report"].validate(document)
+        for form, entry in MODEL_FORMS.items():
+            with self.subTest(form=form.value):
+                validators["report"].validate(
+                    _evaluate_form(form, entry.required_groups)
+                )
+                validators["report"].validate(
+                    _evaluate_form(form, entry.required_groups[1:])
+                )
         bad_intents = [
             lambda i: i.update(extra="x"),
             lambda i: i["scales"][0]["quantity"].update(value=105),
@@ -1196,6 +1267,650 @@ class CliTests(unittest.TestCase):
             digest_bytes(target.read_bytes()),
             digest_bytes(schema_text("intent").encode("utf-8")),
         )
+
+
+_SI_UNIT = {
+    "velocity": "m/s",
+    "density": "kg/m3",
+    "length": "m",
+    "dynamic_viscosity": "Pa.s",
+    "kinematic_viscosity": "m2/s",
+    "dimensionless": "1",
+    "area": "m2",
+    "second_moment_of_area": "m4",
+    "heat_transfer_coefficient": "W/(m2.K)",
+    "thermal_conductivity": "W/(m.K)",
+    "time": "s",
+}
+_WHOLE_LINE = {"valid": [_band(None, False, None, False)], "marginal": []}
+
+
+def _token(text: str) -> str:
+    return text.upper().replace("_", "-")
+
+
+def _all_groups_intent() -> dict:
+    """Duct intent (real evidence) declaring one form of every group with dedicated scales."""
+
+    intent, _ = _qualified_supported()
+    intent["requested_mode"] = "controlled"
+    intent["scales"] = []
+    intent["group_declarations"] = []
+    intent["environment"]["conditions"] = []
+    for group_id in sorted({form.group_id for form in FORMS.values()}):
+        form = next(item for item in FORMS.values() if item.group_id == group_id)
+        bindings = {}
+        for role in form.roles:
+            scale_id = f"SCL-{_token(group_id)}-{_token(role.role)}"
+            intent["scales"].append(
+                {
+                    "scale_id": scale_id,
+                    "description": f"{group_id} {role.role}",
+                    "quantity": {
+                        "value": "1",
+                        "unit": _SI_UNIT[role.kind],
+                        "kind": role.kind,
+                    },
+                    "basis": "measured",
+                    "evidence_ids": ["EVD-EXAMPLE-INPUTS"],
+                    "assumption_ids": [],
+                }
+            )
+            bindings[role.role] = scale_id
+        intent["group_declarations"].append(
+            {
+                "declaration_id": f"GRP-{_token(group_id)}",
+                "group_id": group_id,
+                "form_id": form.form_id,
+                "bindings": bindings,
+            }
+        )
+    return intent
+
+
+def _form_rules(model_form: ModelForm, groups: tuple[str, ...]) -> dict:
+    rules = _load(RULES_PATH)
+    rules["citations"][0]["kind"] = "engineering_rationale"
+    template = rules["rules"][0]
+    rules["rules"] = []
+    for group_id in groups:
+        form = next(item for item in FORMS.values() if item.group_id == group_id)
+        rule = copy.deepcopy(template)
+        rule.pop("escalation_model_forms", None)
+        rule.update(
+            rule_id=f"RULE-{_token(model_form.value)}-{_token(group_id)}",
+            model_form=model_form.value,
+            group={"group_id": group_id, "form_id": form.form_id},
+            bands=copy.deepcopy(_WHOLE_LINE),
+        )
+        rules["rules"].append(rule)
+    return rules
+
+
+def _evaluate_form(model_form: ModelForm, groups: tuple[str, ...]) -> dict:
+    intent = _all_groups_intent()
+    intent["candidate_model_forms"] = [model_form.value]
+    intent["model_form_alternatives"] = []
+    rules = _form_rules(model_form, groups)
+    if not rules["rules"]:
+        # A rule set needs one rule; use an admissible rule for a different, non-candidate form.
+        other = (
+            ModelForm.CONTINUUM_FLOW
+            if model_form is not ModelForm.CONTINUUM_FLOW
+            else ModelForm.RAREFIED_FLOW
+        )
+        rules = _form_rules(other, ("knudsen",))
+    return evaluate_documents(_repin(intent, rules), rules)
+
+
+def _turbulent_case() -> tuple[dict, dict]:
+    """Review probe F1c: turbulent flow gated only by a Reynolds rule."""
+
+    intent, rules = _qualified_supported()
+    rule = copy.deepcopy(_rule(rules, "RULE-REYNOLDS-LAMINAR"))
+    rule.update(
+        rule_id="RULE-TURBULENT",
+        model_form="turbulent_flow",
+        title="Turbulent by Reynolds",
+    )
+    rule["bands"] = {"valid": [_band("4000", True, None, False)], "marginal": []}
+    rules["rules"].append(rule)
+    intent["requested_mode"] = "controlled"
+    intent["candidate_model_forms"] = ["turbulent_flow"]
+    return _repin(intent, rules), rules
+
+
+def _considerations(form: ModelForm) -> list[str]:
+    return [item.consideration_id for item in MODEL_FORMS[form].unevaluated]
+
+
+class ModelFormCoverageTests(unittest.TestCase):
+    def test_table_covers_every_model_form_and_is_bound_into_registry_digest(
+        self,
+    ) -> None:
+        self.assertEqual(set(MODEL_FORMS), set(ModelForm))
+        group_ids = {form.group_id for form in FORMS.values()}
+        described = {
+            item["model_form"]: item for item in registry_description()["model_forms"]
+        }
+        self.assertEqual(set(described), {form.value for form in ModelForm})
+        self.assertEqual(registry_description()["version"], REGISTRY_VERSION)
+        self.assertEqual(digest(registry_description()), registry_digest())
+        for form, entry in MODEL_FORMS.items():
+            with self.subTest(form=form.value):
+                self.assertLessEqual(
+                    set(entry.required_groups), set(entry.admissible_groups)
+                )
+                self.assertLessEqual(set(entry.admissible_groups), group_ids)
+                self.assertTrue(entry.required_groups or entry.unevaluated)
+                self.assertEqual(described[form.value], entry.as_dict())
+        # Section 13.3 considerations are encoded, not silently dropped.
+        self.assertEqual(
+            MODEL_FORMS[ModelForm.INCOMPRESSIBLE_FLOW].required_groups,
+            ("mach", "density_variation"),
+        )
+        self.assertEqual(
+            _considerations(ModelForm.TURBULENT_FLOW),
+            ["wall_treatment", "separation", "target_quantity_sensitivity"],
+        )
+        self.assertEqual(
+            _considerations(ModelForm.LINEAR_ELASTIC),
+            ["strain_magnitude", "material_behavior", "contact", "geometric_change"],
+        )
+        self.assertEqual(
+            _considerations(ModelForm.EULER_BERNOULLI_BEAM), ["local_stress_needs"]
+        )
+        self.assertEqual(
+            _considerations(ModelForm.THIN_SHELL), ["through_thickness_effects"]
+        )
+
+    def test_every_model_form_with_full_required_coverage(self) -> None:
+        for form, entry in MODEL_FORMS.items():
+            with self.subTest(form=form.value):
+                report = _evaluate_form(form, entry.required_groups)
+                outcome = report["model_form_outcomes"][0]
+                considerations = _considerations(form)
+                self.assertEqual(
+                    outcome["required_groups"], list(entry.required_groups)
+                )
+                self.assertEqual(outcome["missing_required_groups"], [])
+                self.assertEqual(outcome["unevaluated_considerations"], considerations)
+                controlled = _codes(report["controlled_review_readiness"]["blockers"])
+                if not entry.required_groups:
+                    self.assertEqual(outcome["state"], "no_rule")
+                    self.assertEqual(report["applicability_state"], "indeterminate")
+                    self.assertIn("MODEL_FORM_WITHOUT_RULE", controlled)
+                elif considerations:
+                    self.assertEqual(outcome["state"], "considerations_unevaluated")
+                    self.assertEqual(
+                        report["applicability_state"], "considerations_review_required"
+                    )
+                else:
+                    self.assertEqual(outcome["state"], "applicable")
+                    self.assertEqual(report["applicability_state"], "rules_satisfied")
+                    self.assertEqual(
+                        report["controlled_review_readiness"],
+                        {"state": "ready_for_independent_review", "blockers": []},
+                    )
+                if considerations:
+                    subjects = {
+                        item["subject"]
+                        for item in report["warnings"]
+                        if item["code"] == "CONSIDERATION_NOT_EVALUATED"
+                    }
+                    self.assertEqual(
+                        subjects, {f"{form.value}/{item}" for item in considerations}
+                    )
+                    self.assertIn("CONSIDERATION_NOT_EVALUATED", controlled)
+                    self.assertEqual(
+                        report["controlled_review_readiness"]["state"], "blocked"
+                    )
+
+    def test_every_missing_required_group_is_indeterminate(self) -> None:
+        for form, entry in MODEL_FORMS.items():
+            for missing in entry.required_groups:
+                remaining = tuple(
+                    item for item in entry.required_groups if item != missing
+                )
+                with self.subTest(form=form.value, missing=missing):
+                    report = _evaluate_form(form, remaining)
+                    outcome = report["model_form_outcomes"][0]
+                    self.assertEqual(outcome["missing_required_groups"], [missing])
+                    self.assertEqual(
+                        outcome["state"], "indeterminate" if remaining else "no_rule"
+                    )
+                    self.assertEqual(report["applicability_state"], "indeterminate")
+                    self.assertIn(
+                        {
+                            "code": "REQUIRED_GROUP_NOT_COVERED",
+                            "subject": f"{form.value}/{missing}",
+                        },
+                        report["controlled_review_readiness"]["blockers"],
+                    )
+                    self.assertEqual(
+                        report["controlled_review_readiness"]["state"], "blocked"
+                    )
+
+    def test_every_inadmissible_group_is_rejected_for_every_model_form(self) -> None:
+        group_ids = sorted({form.group_id for form in FORMS.values()})
+        for form, entry in MODEL_FORMS.items():
+            for group_id in group_ids:
+                rules = _form_rules(form, (group_id,))
+                with self.subTest(form=form.value, group=group_id):
+                    if group_id in entry.admissible_groups:
+                        parse_rule_set(rules)
+                    else:
+                        with self.assertRaisesRegex(InputError, "not admissible"):
+                            parse_rule_set(rules)
+
+    def test_review_probe_f1a_incompressible_mach_only_is_indeterminate(self) -> None:
+        intent, rules = _qualified_supported()
+        rules["rules"] = [
+            item
+            for item in rules["rules"]
+            if item["rule_id"] != "RULE-DENSITY-VARIATION-INCOMPRESSIBLE"
+        ]
+        intent["requested_mode"] = "controlled"
+        intent["candidate_model_forms"] = ["incompressible_flow"]
+        intent["group_declarations"] = [
+            item
+            for item in intent["group_declarations"]
+            if item["group_id"] != "density_variation"
+        ]
+        _scale(intent, "SCL-FLOW-SPEED")["quantity"] = {
+            "value": "50",
+            "unit": "m/s",
+            "kind": "velocity",
+        }
+        report = evaluate_documents(_repin(intent, rules), rules)
+        self.assertEqual(
+            _outcome(report, "RULE-MACH-INCOMPRESSIBLE")["outcome"], "valid"
+        )
+        self.assertEqual(report["model_form_outcomes"][0]["state"], "indeterminate")
+        self.assertEqual(
+            report["model_form_outcomes"][0]["missing_required_groups"],
+            ["density_variation"],
+        )
+        self.assertEqual(report["applicability_state"], "indeterminate")
+        self.assertEqual(
+            report["controlled_review_readiness"],
+            {
+                "state": "blocked",
+                "blockers": [
+                    {
+                        "code": "REQUIRED_GROUP_NOT_COVERED",
+                        "subject": "incompressible_flow/density_variation",
+                    }
+                ],
+            },
+        )
+
+    def test_review_probe_f1b_linear_elastic_on_knudsen_is_rejected(self) -> None:
+        rules = _load(RULES_PATH)
+        rule = copy.deepcopy(_rule(rules, "RULE-KNUDSEN-CONTINUUM"))
+        rule.update(rule_id="RULE-LINEAR-ELASTIC", model_form="linear_elastic")
+        rules["rules"].append(rule)
+        with self.assertRaisesRegex(
+            InputError, "'knudsen' is not admissible for model form 'linear_elastic'"
+        ):
+            parse_rule_set(rules)
+
+    def test_review_probe_f1c_turbulent_reynolds_only_requires_consideration_review(
+        self,
+    ) -> None:
+        report = evaluate_documents(*_turbulent_case())
+        self.assertEqual(_outcome(report, "RULE-TURBULENT")["outcome"], "valid")
+        self.assertEqual(
+            report["model_form_outcomes"][0]["state"], "considerations_unevaluated"
+        )
+        self.assertEqual(
+            report["applicability_state"], "considerations_review_required"
+        )
+        expected = [
+            {"code": "CONSIDERATION_NOT_EVALUATED", "subject": f"turbulent_flow/{item}"}
+            for item in ("wall_treatment", "separation", "target_quantity_sensitivity")
+        ]
+        self.assertEqual(
+            report["controlled_review_readiness"],
+            {"state": "blocked", "blockers": expected},
+        )
+        for item in expected:
+            self.assertIn(item, report["qualified_execution"]["blockers"])
+
+    def test_violation_and_marginal_outrank_considerations(self) -> None:
+        intent, rules = _turbulent_case()
+        _rule(rules, "RULE-TURBULENT")["bands"] = {
+            "valid": [_band("1000000", True, None, False)],
+            "marginal": [_band("500000", True, "1000000", False)],
+        }
+        # Re = 126480000/181 (about 698785) with the duct inputs: marginal.
+        report = evaluate_documents(_repin(intent, rules), rules)
+        self.assertEqual(report["applicability_state"], "marginal_review_required")
+        self.assertIn(
+            "CONSIDERATION_NOT_EVALUATED",
+            _codes(report["controlled_review_readiness"]["blockers"]),
+        )
+        _rule(rules, "RULE-TURBULENT")["bands"]["marginal"] = []
+        report = evaluate_documents(_repin(intent, rules), rules)
+        self.assertEqual(report["applicability_state"], "rules_violated")
+        self.assertEqual(report["model_form_outcomes"][0]["state"], "violated")
+
+
+class InputSupportTests(unittest.TestCase):
+    def _report(
+        self,
+        evidence: list[str],
+        assumption_status: str | None,
+        *,
+        basis: str = "measured",
+    ) -> dict:
+        """Evaluate with SCL-MEAN-FREE-PATH supported by the given evidence kinds and assumption status."""
+
+        intent, rules = _qualified_supported()
+        intent["requested_mode"] = "controlled"
+        intent["evidence"] = [
+            {
+                "evidence_id": f"EVD-SUPPORT-{index}",
+                "kind": kind,
+                "title": f"support {index}",
+                "locator": "test",
+                "content_digest": "sha256:" + "1" * 64,
+            }
+            for index, kind in enumerate(["measurement_record", *evidence])
+        ]
+        intent["assumptions"][0]["status"] = assumption_status or "open"
+        for item in intent["scales"]:
+            item["evidence_ids"] = ["EVD-SUPPORT-0"]
+            item["assumption_ids"] = []
+            item["basis"] = "measured"
+        target = _scale(intent, "SCL-MEAN-FREE-PATH")
+        target["basis"] = basis
+        target["evidence_ids"] = [
+            f"EVD-SUPPORT-{index + 1}" for index in range(len(evidence))
+        ]
+        target["assumption_ids"] = (
+            [] if assumption_status is None else ["ASM-EXAMPLE-VALUES"]
+        )
+        return evaluate_documents(_repin(intent, rules), rules)
+
+    def test_support_combinations(self) -> None:
+        cases = (
+            (["synthetic_illustration"], None, False),
+            (["synthetic_illustration"], "open", False),
+            ([], "open", False),
+            (["synthetic_illustration", "synthetic_illustration"], None, False),
+            (["synthetic_illustration"], "accepted", True),
+            ([], "accepted", True),
+            (["measurement_record"], None, True),
+            (["synthetic_illustration", "test_record"], None, True),
+            (["human_rationale"], "open", True),
+            (["standard"], None, True),
+        )
+        gate = {"code": "INPUT_SUPPORT_NOT_QUALIFYING", "subject": "SCL-MEAN-FREE-PATH"}
+        for evidence, assumption, qualifies in cases:
+            with self.subTest(evidence=evidence, assumption=assumption):
+                report = self._report(evidence, assumption)
+                if qualifies:
+                    self.assertNotIn(gate, report["qualified_execution"]["blockers"])
+                    self.assertEqual(
+                        report["controlled_review_readiness"],
+                        {"state": "ready_for_independent_review", "blockers": []},
+                    )
+                else:
+                    self.assertIn(gate, report["qualified_execution"]["blockers"])
+                    self.assertEqual(
+                        report["controlled_review_readiness"],
+                        {"state": "blocked", "blockers": [gate]},
+                    )
+                synthetic_warning = {
+                    item["subject"]
+                    for item in report["warnings"]
+                    if item["code"] == "SYNTHETIC_INPUT_EVIDENCE"
+                }
+                self.assertEqual(
+                    synthetic_warning,
+                    {"SCL-MEAN-FREE-PATH"}
+                    if "synthetic_illustration" in evidence
+                    else set(),
+                )
+
+    def test_review_probe_f2a_measured_basis_with_synthetic_evidence_is_blocked(
+        self,
+    ) -> None:
+        report = self._report(["synthetic_illustration"], None, basis="measured")
+        self.assertEqual(report["applicability_state"], "rules_satisfied")
+        self.assertEqual(
+            report["controlled_review_readiness"],
+            {
+                "state": "blocked",
+                "blockers": [
+                    {
+                        "code": "INPUT_SUPPORT_NOT_QUALIFYING",
+                        "subject": "SCL-MEAN-FREE-PATH",
+                    }
+                ],
+            },
+        )
+
+    def test_unbound_scales_do_not_gate(self) -> None:
+        intent, rules = _qualified_supported()
+        intent["evidence"].append(
+            {
+                "evidence_id": "EVD-SYNTHETIC-CONTEXT",
+                "kind": "synthetic_illustration",
+                "title": "context",
+                "locator": "test",
+                "content_digest": "sha256:" + "2" * 64,
+            }
+        )
+        context = _scale(intent, "SCL-INLET-PRESSURE")
+        context["evidence_ids"] = ["EVD-SYNTHETIC-CONTEXT"]
+        context["assumption_ids"] = []
+        context["basis"] = "measured"
+        report = evaluate_documents(_repin(intent, rules), rules)
+        self.assertEqual(
+            report["controlled_review_readiness"]["state"],
+            "ready_for_independent_review",
+        )
+
+    def test_review_probe_f2b_retired_assumptions_cannot_support_live_inputs(
+        self,
+    ) -> None:
+        for critical in (True, False):
+            for with_evidence in (True, False):
+                with self.subTest(critical=critical, with_evidence=with_evidence):
+                    intent, _ = _qualified_supported()
+                    intent["assumptions"][0].update(status="retired", critical=critical)
+                    if not with_evidence:
+                        for item in intent["scales"]:
+                            item["evidence_ids"] = []
+                    with self.assertRaisesRegex(InputError, "retired assumptions"):
+                        parse_intent(intent)
+        intent, _ = _qualified_supported()
+        intent["assumptions"][0]["status"] = "retired"
+        for item in intent["scales"]:
+            item["assumption_ids"] = []
+            item["basis"] = "measured"
+        parse_intent(intent)  # An unreferenced retired assumption remains recordable.
+
+    def test_scale_bound_to_two_roles_and_rejected_candidates_are_rejected(
+        self,
+    ) -> None:
+        intent = _load(DUCT_PATH)
+        knudsen = next(
+            item
+            for item in intent["group_declarations"]
+            if item["group_id"] == "knudsen"
+        )
+        knudsen["bindings"]["mean_free_path"] = "SCL-DUCT-DIAMETER"
+        with self.assertRaisesRegex(InputError, "at most one role"):
+            parse_intent(intent)
+        intent = _load(DUCT_PATH)
+        intent["model_form_alternatives"].append(
+            {
+                "model_form": "continuum_flow",
+                "disposition": "rejected",
+                "rationale": "x",
+            }
+        )
+        with self.assertRaisesRegex(InputError, "rejected in model_form_alternatives"):
+            parse_intent(intent)
+
+
+class VersioningTests(unittest.TestCase):
+    def test_superseded_unpublished_drafts_are_rejected(self) -> None:
+        intent = _load(DUCT_PATH)
+        intent["schema_version"] = "contrainte.physics-intent/0.1"
+        with self.assertRaisesRegex(InputError, "superseded"):
+            parse_intent(intent)
+        rules = _load(RULES_PATH)
+        rules["schema_version"] = "contrainte.applicability-rules/0.1"
+        with self.assertRaisesRegex(InputError, "superseded"):
+            parse_rule_set(rules)
+        report = evaluate_documents(_load(DUCT_PATH), _load(RULES_PATH))
+        report["schema_version"] = "contrainte.physics-applicability-report/0.1"
+        with self.assertRaisesRegex(IntegrityError, "superseded"):
+            verify_report(report, _load(DUCT_PATH), _load(RULES_PATH))
+        legacy_rules = _load(RULES_PATH)
+        legacy_rules["group_registry"] = legacy_rules.pop("registry")
+        with self.assertRaisesRegex(InputError, "group_registry"):
+            parse_rule_set(legacy_rules)
+
+
+class CliRobustnessTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(prefix="phys-robust-")
+        self.root = Path(self.temp.name)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _run(self, *argv: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(
+                list(argv)
+            )  # Any escaping exception fails the test: no traceback path.
+        return code, out.getvalue(), err.getvalue()
+
+    def _evaluate_bytes(self, name: str, content: bytes) -> tuple[int, str, Path]:
+        path = self.root / name
+        path.write_bytes(content)
+        output = self.root / f"{name}.out"
+        code, _, err = self._run(
+            "evaluate", str(path), str(RULES_PATH), "-o", str(output)
+        )
+        return code, err, output
+
+    def test_malformed_input_bytes_exit_3_without_report(self) -> None:
+        duct = DUCT_PATH.read_text(encoding="utf-8")
+        cases = {
+            "invalid-utf8": (b'{"a": "\xff"}', "not valid UTF-8"),
+            "lone-surrogate-value": (
+                duct.replace('"title": "', '"title": "\\ud800', 1).encode("utf-8"),
+                "lone surrogate",
+            ),
+            "lone-surrogate-key": (b'{"\\udfff": "x"}', "lone surrogate"),
+            "huge-int": (b'{"x": 1' + b"0" * 5000 + b"}", "cannot be decoded"),
+            "deep-nesting": (b"[" * 100000 + b"]" * 100000, "nested too deeply"),
+            "truncated": (duct[:-20].encode("utf-8"), "invalid JSON"),
+            "utf16": (duct.encode("utf-16"), "not valid UTF-8"),
+        }
+        for name, (content, message) in cases.items():
+            with self.subTest(name):
+                code, err, output = self._evaluate_bytes(name, content)
+                self.assertEqual(code, 3, err)
+                self.assertTrue(err.startswith("input rejected"), err)
+                self.assertIn(message, err)
+                self.assertNotIn("Traceback", err)
+                self.assertFalse(output.exists())
+
+    def test_utf8_bom_is_ignored(self) -> None:
+        content = b"\xef\xbb\xbf" + DUCT_PATH.read_bytes()
+        code, err, output = self._evaluate_bytes("bom.json", content)
+        self.assertEqual((code, err), (10, ""))
+        self.assertTrue((output / REPORT_FILE).exists())
+
+    def test_surrogate_in_rule_set_exits_3(self) -> None:
+        rules = RULES_PATH.read_text(encoding="utf-8").replace(
+            '"title": "', '"title": "\\udc80', 1
+        )
+        path = self.root / "rules.json"
+        path.write_text(rules, encoding="utf-8")
+        code, _, err = self._run(
+            "evaluate", str(DUCT_PATH), str(path), "-o", str(self.root / "o")
+        )
+        self.assertEqual((code, "lone surrogate" in err), (3, True))
+        self.assertFalse((self.root / "o").exists())
+        self.assertEqual(self._run("rules-pin", str(path))[0], 3)
+
+    def test_output_failures_exit_6(self) -> None:
+        blocker = self.root / "a-file"
+        blocker.write_bytes(b"x")
+        code, _, err = self._run(
+            "evaluate", str(DUCT_PATH), str(RULES_PATH), "-o", str(blocker)
+        )
+        self.assertEqual((code, err.startswith("output failure")), (6, True))
+        code, _, err = self._run(
+            "evaluate", str(DUCT_PATH), str(RULES_PATH), "-o", str(blocker / "child")
+        )
+        self.assertEqual((code, err.startswith("output failure")), (6, True))
+        code, _, err = self._run("schema", "intent", "--output", str(self.root))
+        self.assertEqual((code, err.startswith("output failure")), (6, True))
+        self.assertEqual(blocker.read_bytes(), b"x")
+
+    def test_corrupt_retained_bundle_exits_5(self) -> None:
+        corruptions = (
+            b"\xff\xfe",
+            b"[" * 100000,
+            b'{"x": 1' + b"0" * 5000 + b"}",
+            b'{"\\ud800": 1}',
+        )
+        for name in (REPORT_FILE, INTENT_FILE):
+            for index, content in enumerate(corruptions):
+                with self.subTest(name=name, corruption=index):
+                    bundle = self.root / f"bundle-{name}-{index}"
+                    self._run(
+                        "evaluate", str(DUCT_PATH), str(RULES_PATH), "-o", str(bundle)
+                    )
+                    (bundle / name).write_bytes(content)
+                    code, _, err = self._run("verify", str(bundle))
+                    self.assertEqual(
+                        (code, err.startswith("integrity failure")), (5, True), err
+                    )
+
+    def test_retained_input_altered_to_invalid_exits_5_explicit_files_exit_3(
+        self,
+    ) -> None:
+        bundle = self.root / "bundle"
+        self._run("evaluate", str(DUCT_PATH), str(RULES_PATH), "-o", str(bundle))
+        intent = loads_strict((bundle / INTENT_FILE).read_bytes())
+        intent["scales"][0]["quantity"]["unit"] = "m"
+        (bundle / INTENT_FILE).write_bytes(canonical_bytes(intent))
+        self.assertEqual(self._run("verify", str(bundle))[0], 5)
+        code = self._run(
+            "verify",
+            str(bundle / REPORT_FILE),
+            "--intent",
+            str(bundle / INTENT_FILE),
+            "--rules",
+            str(RULES_PATH),
+        )[0]
+        self.assertEqual(code, 3)
+
+    def test_considerations_exit_status_13(self) -> None:
+        intent, rules = _turbulent_case()
+        paths = []
+        for name, document in (("i.json", intent), ("r.json", rules)):
+            path = self.root / name
+            path.write_bytes(canonical_bytes(document))
+            paths.append(str(path))
+        code, out, _ = self._run("evaluate", *paths, "-o", str(self.root / "o"))
+        self.assertEqual(code, 13)
+        self.assertEqual(
+            json.loads(out)["applicability_state"], "considerations_review_required"
+        )
+        self.assertEqual(self._run("verify", str(self.root / "o"))[0], 0)
 
 
 if __name__ == "__main__":

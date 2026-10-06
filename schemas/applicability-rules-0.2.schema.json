@@ -1,6 +1,6 @@
 {
   "$comment": "Structural schema only. JSON Schema treats 1.0 as an integer and cannot see JSON lexical form; the strict loader rejects every float literal and the parser enforces units, references, bands, digests and pins.",
-  "$id": "https://contrainte.dev/schemas/applicability-rules-0.1.schema.json",
+  "$id": "https://contrainte.dev/schemas/applicability-rules-0.2.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -101,7 +101,7 @@
       "minItems": 1,
       "type": "array"
     },
-    "group_registry": {
+    "registry": {
       "additionalProperties": false,
       "properties": {
         "digest": {
@@ -109,7 +109,7 @@
           "type": "string"
         },
         "version": {
-          "const": "contrainte.dimensionless-groups/0.1"
+          "const": "contrainte.applicability-registry/0.2"
         }
       },
       "required": [
@@ -416,7 +416,7 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "contrainte.applicability-rules/0.1"
+      "const": "contrainte.applicability-rules/0.2"
     },
     "title": {
       "maxLength": 4000,
@@ -431,10 +431,10 @@
     "revision",
     "title",
     "authoring",
-    "group_registry",
+    "registry",
     "citations",
     "rules"
   ],
-  "title": "contrainte.applicability-rules/0.1",
+  "title": "contrainte.applicability-rules/0.2",
   "type": "object"
 }

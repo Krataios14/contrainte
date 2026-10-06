@@ -8,16 +8,8 @@ from enum import Enum
 from fractions import Fraction
 from typing import Any
 
-from ..canonical import digest
 from ..errors import DimensionalityError, InputError
-from .dimensional import (
-    DIMENSIONLESS,
-    KINDS,
-    DimensionalQuantity,
-    unit_registry_description,
-)
-
-GROUP_REGISTRY_VERSION = "contrainte.dimensionless-groups/0.1"
+from .dimensional import DIMENSIONLESS, KINDS, DimensionalQuantity
 
 
 class RoleDomain(str, Enum):
@@ -183,23 +175,17 @@ def _dimension_of(roles: tuple[GroupRole, ...]) -> tuple[int, ...]:
 
 
 for _definition in _FORMS:
-    # Every registered form must be dimensionless by construction.
-    assert _dimension_of(_definition.roles) == DIMENSIONLESS, _definition.form_id
-    assert _definition.form_id.startswith(_definition.group_id + "."), (
-        _definition.form_id
-    )
+    # Explicit checks (not ``assert``) so every form stays dimensionless under ``python -O``.
+    if _dimension_of(_definition.roles) != DIMENSIONLESS:
+        raise RuntimeError(f"group form {_definition.form_id} is not dimensionless")
+    if not _definition.form_id.startswith(_definition.group_id + "."):
+        raise RuntimeError(
+            f"group form {_definition.form_id} is not namespaced by its group"
+        )
 
 
-def registry_description() -> dict[str, Any]:
-    return {
-        "version": GROUP_REGISTRY_VERSION,
-        "quantities": unit_registry_description(),
-        "forms": [form.as_dict() for form in _FORMS],
-    }
-
-
-def registry_digest() -> str:
-    return digest(registry_description())
+def forms_description() -> list[dict[str, Any]]:
+    return [form.as_dict() for form in _FORMS]
 
 
 def require_form(group_id: Any, form_id: Any, field: str) -> GroupForm:

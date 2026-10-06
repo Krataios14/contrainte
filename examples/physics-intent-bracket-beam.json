@@ -181,7 +181,7 @@
   "requested_mode": "controlled",
   "revision": "A",
   "rule_set_pin": {
-    "digest": "sha256:e0d129198ede47d8dc9148bf6827e2562a5be9f4f46d45ae561ef53bc59a244f",
+    "digest": "sha256:121080be0dd04092b6cd318578eecefc58938eebc881e6a2600dbae95c630102",
     "revision": "1",
     "rule_set_id": "RULESET-ILLUSTRATIVE-SCREENING"
   },
@@ -315,7 +315,7 @@
       "scale_id": "SCL-SERVICE-LOAD"
     }
   ],
-  "schema_version": "contrainte.physics-intent/0.1",
+  "schema_version": "contrainte.physics-intent/0.2",
   "target_outputs": [
     {
       "description": "Tip deflection under service load",

@@ -11,9 +11,11 @@ from ..errors import DimensionalityError, InputError
 from . import _parse as p
 from .dimensional import KINDS, UNITS, DimensionalQuantity
 from .groups import GroupForm, check_binding_kinds, require_form
-from .rules import EVIDENCE_ID, RULE_SET_ID, ModelForm
+from .model_forms import ModelForm
+from .rules import EVIDENCE_ID, RULE_SET_ID
 
-INTENT_SCHEMA = "contrainte.physics-intent/0.1"
+INTENT_SCHEMA = "contrainte.physics-intent/0.2"
+SUPERSEDED_INTENT_SCHEMAS = ("contrainte.physics-intent/0.1",)
 
 PHY_ID = p.identifier_pattern("PHY")
 REQ_ID = p.identifier_pattern("REQ")
@@ -207,6 +209,8 @@ class Scale:
     scale_id: str
     quantity: DimensionalQuantity
     basis: Basis
+    evidence_ids: tuple[str, ...]
+    assumption_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -235,6 +239,7 @@ class PhysicsIntent:
     declarations: tuple[GroupDeclaration, ...]
     candidate_model_forms: tuple[ModelForm, ...]
     assumptions: tuple[Assumption, ...]
+    evidence_kinds: dict[str, IntentEvidenceKind]
     rule_set_pin: dict[str, str]
     raw: dict[str, Any]
 
@@ -263,6 +268,8 @@ def _records(
 
 def parse_intent(raw: Any) -> PhysicsIntent:
     f = "intent"
+    p.require_unicode_text(raw, f)
+    p.schema_version(raw, "physics-intent", INTENT_SCHEMA, SUPERSEDED_INTENT_SCHEMAS)
     raw = p.obj(
         raw,
         f,
@@ -298,10 +305,6 @@ def parse_intent(raw: Any) -> PhysicsIntent:
             "rule_set_pin",
         ),
     )
-    if raw["schema_version"] != INTENT_SCHEMA:
-        raise InputError(
-            f"unsupported physics-intent schema: {raw['schema_version']!r}"
-        )
     intent_id = p.ident(raw, "intent_id", f, PHY_ID)
     revision = p.text(raw, "revision", f)
     p.text(raw, "title", f)
@@ -317,12 +320,15 @@ def parse_intent(raw: Any) -> PhysicsIntent:
 
     # Evidence and assumptions are parsed first so every later reference can resolve.
     evidence_ids = []
+    evidence_kinds: dict[str, IntentEvidenceKind] = {}
     for field, item in _records(raw, "evidence", f):
         item = p.obj(
             item, field, ("evidence_id", "kind", "title", "locator", "content_digest")
         )
         evidence_ids.append(p.ident(item, "evidence_id", field, EVIDENCE_ID))
-        p.enum(item, "kind", field, IntentEvidenceKind)
+        evidence_kinds[evidence_ids[-1]] = p.enum(
+            item, "kind", field, IntentEvidenceKind
+        )
         p.text(item, "title", field)
         p.text(item, "locator", field)
         p.digest_text(item, "content_digest", field)
@@ -355,6 +361,11 @@ def parse_intent(raw: Any) -> PhysicsIntent:
         )
     p.unique((item.assumption_id for item in assumptions), f"{f}.assumptions")
     assumption_ids = {item.assumption_id for item in assumptions}
+    retired_assumptions = {
+        item.assumption_id
+        for item in assumptions
+        if item.status is AssumptionStatus.RETIRED
+    }
 
     geometry = p.obj(
         raw["geometry"], f"{f}.geometry", ("modeled", "excluded", "simplifications")
@@ -496,10 +507,19 @@ def parse_intent(raw: Any) -> PhysicsIntent:
             )
         if basis is Basis.ASSUMED and not cited_assumptions:
             raise InputError(f"{field} has basis 'assumed' and must cite an assumption")
+        retired = [item for item in cited_assumptions if item in retired_assumptions]
+        if retired:
+            raise InputError(
+                f"{field} cites retired assumptions, which cannot support a live input: {', '.join(retired)}"
+            )
         if scale_id in scales:
             raise InputError(f"{f}.scales contains duplicate identifier {scale_id!r}")
         scales[scale_id] = Scale(
-            scale_id, _quantity(item["quantity"], f"{field}.quantity"), basis
+            scale_id,
+            _quantity(item["quantity"], f"{field}.quantity"),
+            basis,
+            cited_evidence,
+            cited_assumptions,
         )
 
     declarations = []
@@ -516,6 +536,11 @@ def parse_intent(raw: Any) -> PhysicsIntent:
                     f"{field}.bindings.{role} is not a valid scale identifier: {scale_id!r}"
                 )
             p.resolve([scale_id], scales, f"{field}.bindings.{role}")
+        bound = list(bindings.values())
+        if len(bound) != len(set(bound)):
+            raise InputError(
+                f"{field}.bindings must bind each scale to at most one role"
+            )
         check_binding_kinds(
             form,
             {role: scales[scale_id].quantity for role, scale_id in bindings.items()},
@@ -652,6 +677,16 @@ def parse_intent(raw: Any) -> PhysicsIntent:
         p.enum(item, "disposition", field, Disposition)
         p.text(item, "rationale", field)
     p.unique(alternatives, f"{f}.model_form_alternatives")
+    rejected = [
+        item["model_form"]
+        for item in raw["model_form_alternatives"]
+        if item["disposition"] == Disposition.REJECTED.value
+        and item["model_form"] in candidate_model_forms
+    ]
+    if rejected:
+        raise InputError(
+            f"{f}.candidate_model_forms includes forms rejected in model_form_alternatives: {', '.join(rejected)}"
+        )
     if criticality is Criticality.CRITICAL and not alternatives:
         raise InputError(
             f"{f}.model_form_alternatives must not be empty for a critical analysis"
@@ -675,6 +710,7 @@ def parse_intent(raw: Any) -> PhysicsIntent:
         declarations=tuple(declarations),
         candidate_model_forms=candidate_model_forms,
         assumptions=tuple(assumptions),
+        evidence_kinds=evidence_kinds,
         rule_set_pin=dict(pin),
         raw=raw,
     )
