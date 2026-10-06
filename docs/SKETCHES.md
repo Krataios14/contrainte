@@ -44,7 +44,7 @@ The solver converts values to rational millimetres and performs Gaussian elimina
 - sketches with any free coordinate;
 - redundant or overconstraining equations;
 - constraints that reference unknown or identical points; and
-- solved coordinates that cannot be represented as finite decimals in evidence JSON.
+- solved coordinates that cannot be represented as finite decimals in evidence JSON. Only coupled version 0.3 midpoint relations can produce these; the input error names the coordinates and the coupled midpoint constraints.
 
 The evidence report records the variable count, equation count, matrix rank, rational-arithmetic identity, and every solved coordinate.
 
@@ -56,7 +56,9 @@ Version 0.3 accepts every 0.2 document shape and adds exactly one constraint kin
 | --- | --- | --- |
 | `midpoint` | `first_point_id`, `second_point_id`, `midpoint_point_id` | `2 * midpoint - first - second = 0` in X and in Y. |
 
-The three point IDs must be distinct, declared points. The relation adds two rational equations to the same elimination as every other constraint, so it is subject to the same rank, consistency, and redundancy rules. A midpoint combined with a fixed position for the same centre is redundant when it agrees and inconsistent when it does not. The midpoint of finite decimal endpoints is itself a finite decimal, so evidence stays exact.
+The three point IDs must be distinct, declared points. The relation adds two rational equations to the same elimination as every other constraint, so it is subject to the same rank, consistency, and redundancy rules. A midpoint combined with a fixed position for the same centre is redundant when it agrees and inconsistent when it does not.
+
+A single midpoint relation whose endpoints are already finite decimals yields a finite decimal, because halving only adds a factor of two to the denominator. This does not hold for coupled systems. When midpoint relations depend on each other, the exact solution can be any rational number. For example, with `a` fixed at (0, 0), `c` fixed at (1 mm, 0), `midpoint(a, b) -> m` and `midpoint(m, c) -> b`, the full-rank system solves to `m.x = 1/3 mm` and `b.x = 2/3 mm`. Evidence JSON carries finite decimals only. The solver therefore rejects such a sketch as an input error. The error names each non-terminating coordinate with its exact rational value and lists the midpoint constraints coupled to it. Coordinates are never rounded. Coupled systems whose exact solution terminates are accepted as usual; for example, the same cycle with `c` at (3 mm, 0) solves to `m.x = 1 mm` and `b.x = 2 mm`. Arbitrary rational coordinates would need a new, separately versioned exact-rational evidence schema; version 0.3 does not provide one.
 
 The intended use is locating a circular hole centre midway between two existing profile points. If those endpoints are re-dimensioned, the centre follows. Circle-centre containment and clearance checks then run on the derived position. For example:
 
@@ -152,7 +154,7 @@ The compile command prints the bundle digest. The verify command prints a JSON r
 
 ## Deliberate limits and nonclaims
 
-No version is a general 2D constraint solver or a full mechanical feature modeller. Version 0.2 provides circular through-holes, but not circular bosses or arbitrary circular outer profiles. Version 0.3's midpoint is a point-to-two-points linear relation. It is not general symmetry, a point-on-line or point-on-circle relation, a pattern, or a construction line. The language does not provide arcs, ellipses, splines, tangency, angles, equal-length constraints, symmetry, construction geometry, reference dimensions, datum systems, fillets, chamfers, shells, lofts, sweeps, draft, threads, or partial-depth pockets.
+No version is a general 2D constraint solver or a full mechanical feature modeller. Version 0.2 provides circular through-holes, but not circular bosses or arbitrary circular outer profiles. Version 0.3's midpoint is a point-to-two-points linear relation. It is not general symmetry, a point-on-line or point-on-circle relation, a pattern, or a construction line. Coupled midpoint systems with non-terminating rational solutions are rejected, not supported. The language does not provide arcs, ellipses, splines, tangency, angles, equal-length constraints, symmetry, construction geometry, reference dimensions, datum systems, fillets, chamfers, shells, lofts, sweeps, draft, threads, or partial-depth pockets.
 
 The minimum-feature check covers nominal polygon edge length, circle diameter, extrusion distance, and exact nominal boundary separation. It does not establish tolerance-conditioned wall or ligament thickness, tool accessibility, internal-corner radius, cutter compensation, stock allowance, feeds and speeds, fixturing, surface finish, distortion, residual stress, or manufacturability for the named process.
 

@@ -92,7 +92,8 @@ def _kg_fraction(value: Quantity) -> Fraction:
     return Fraction(value.value) * scale
 
 
-def _fraction_text(value: Fraction) -> str:
+def _decimal_places(value: Fraction) -> int | None:
+    """Return the decimal places of an exact finite decimal, or None if it does not terminate."""
     denominator = value.denominator
     powers_of_two = 0
     while denominator % 2 == 0:
@@ -103,8 +104,14 @@ def _fraction_text(value: Fraction) -> str:
         denominator //= 5
         powers_of_five += 1
     if denominator != 1:
+        return None
+    return max(powers_of_two, powers_of_five)
+
+
+def _fraction_text(value: Fraction) -> str:
+    places = _decimal_places(value)
+    if places is None:
         raise ExecutionError("constraint solution cannot be represented as a finite decimal")
-    places = max(powers_of_two, powers_of_five)
     scaled = abs(value.numerator) * (10**places // value.denominator)
     if places == 0:
         rendered = str(scaled)
@@ -617,6 +624,7 @@ def solve_constraints(
         )
         for point in sketch.points
     }
+    _reject_nonterminating_solution(sketch, solved)
     report = {
         "status": "fully_constrained",
         "variable_count": len(variables),
@@ -633,6 +641,57 @@ def solve_constraints(
         ],
     }
     return solved, report
+
+
+def _reject_nonterminating_solution(sketch: SketchExtrusion, solved: PointMap) -> None:
+    """Reject exact solutions that the finite-decimal evidence format cannot carry.
+
+    Version 0.1 and 0.2 constraints have unit coefficients, so their solutions
+    always terminate. Coupled midpoint relations can have solutions such as 1/3;
+    these are reported as unsupported input and are never rounded.
+    """
+    unsupported = [
+        (point.point_id, axis, value)
+        for point in sketch.points
+        for axis, value in zip(_AXES, solved[point.point_id])
+        if _decimal_places(value) is None
+    ]
+    if not unsupported:
+        return
+    # Relation constraints couple their points; fixed points are constants.
+    fixed_points = {
+        constraint.point_id for constraint in sketch.constraints if constraint.kind == "fixed"
+    }
+    relations = [
+        constraint for constraint in sketch.constraints if constraint.kind != "fixed"
+    ]
+    coupled = {point_id for point_id, _, _ in unsupported}
+    pending = list(coupled)
+    while pending:
+        current = pending.pop()
+        if current in fixed_points:
+            continue
+        for constraint in relations:
+            if current in constraint.referenced_points:
+                for point_id in constraint.referenced_points:
+                    if point_id not in coupled:
+                        coupled.add(point_id)
+                        pending.append(point_id)
+    involved = [
+        constraint.constraint_id
+        for constraint in relations
+        if constraint.kind == "midpoint" and coupled & set(constraint.referenced_points)
+    ]
+    coordinates = ", ".join(
+        f"{point_id}.{axis} = {value} mm" for point_id, axis, value in unsupported
+    )
+    message = (
+        "sketch constraint solution is not a finite decimal and is unsupported; "
+        f"non-terminating coordinates: {coordinates}"
+    )
+    if involved:
+        message += "; coupled midpoint constraints: " + ", ".join(involved)
+    raise InputError(message)
 
 
 def validate_profile(sketch: SketchExtrusion, points: PointMap) -> None:

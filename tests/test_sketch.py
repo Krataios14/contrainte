@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from fractions import Fraction
 from importlib.util import find_spec
 from pathlib import Path
 
 from contrainte.artifacts import file_digest
 from contrainte.canonical import digest, dumps_pretty, loads_strict
+from contrainte.cli import main as cli_main
 from contrainte.errors import InputError, IntegrityError
 from contrainte.sketch import (
     SketchConstraint,
@@ -147,6 +150,25 @@ def midpoint_sketch_document() -> dict:
     document["title"] = "Plate with circular holes located by midpoint relations"
     document["constraints"][14] = midpoint("c15", "p0", "h0", "q0")
     document["constraints"][15] = midpoint("c16", "h2", "p2", "q1")
+    return document
+
+
+def coupled_midpoint_plate_document(width: str) -> dict:
+    """A plate whose two hole centres locate each other through midpoints.
+
+    q0 = (p0 + q1) / 2 and q1 = (q0 + p2) / 2 give q0.x = width / 3 and
+    q1.x = 2 * width / 3; q0.y = 20 and q1.y = 40 for the 60 mm height.
+    """
+    document = midpoint_sketch_document()
+    document["points"] = [
+        point for point in document["points"] if not point["point_id"].startswith("h")
+    ]
+    document["constraints"] = document["constraints"][7:14] + [
+        midpoint("c15", "p0", "q1", "q0"),
+        midpoint("c16", "q0", "p2", "q1"),
+    ]
+    document["constraints"][2]["distance"] = length(width)
+    document["profile"]["inner_loops"] = []
     return document
 
 
@@ -556,6 +578,86 @@ class SketchExtrusionTests(unittest.TestCase):
 
         q1 = next(item for item in report["solved_points_mm"] if item["point_id"] == "q1")
         self.assertEqual(q1, {"point_id": "q1", "x": "90.0005", "y": "50"})
+
+    def test_cyclic_midpoints_with_thirds_are_rejected_as_input(self) -> None:
+        # Independent review F1: a=(0,0), c=(1,0), midpoint(a,b)->m and
+        # midpoint(m,c)->b is full rank with exact b=2/3 mm, m=1/3 mm.
+        document = midpoint_sketch_document()
+        document["manufacturing"]["minimum_feature_size"] = length("0.1")
+        document["points"] = [{"point_id": point} for point in ("a", "b", "c", "d", "m")]
+        document["constraints"] = [
+            fixed("c01", "a", "0", "0"),
+            fixed("c02", "c", "1", "0"),
+            fixed("c03", "d", "0", "1"),
+            midpoint("c04", "a", "b", "m"),
+            midpoint("c05", "m", "c", "b"),
+        ]
+        document["profile"] = {
+            "outer_loop": ["a", "m", "b", "c", "d"],
+            "inner_loops": [],
+            "circular_holes": [],
+        }
+
+        with self.assertRaises(InputError) as raised:
+            SketchExtrusion.from_dict(document)
+
+        self.assertEqual(
+            str(raised.exception),
+            "sketch constraint solution is not a finite decimal and is unsupported; "
+            "non-terminating coordinates: b.x = 2/3 mm, m.x = 1/3 mm; "
+            "coupled midpoint constraints: c04, c05",
+        )
+
+    def test_cyclic_midpoint_plate_rejection_and_representable_cycle(self) -> None:
+        document = coupled_midpoint_plate_document("100")
+        with self.assertRaisesRegex(
+            InputError,
+            r"non-terminating coordinates: q0\.x = 100/3 mm, q1\.x = 200/3 mm; "
+            r"coupled midpoint constraints: c15, c16$",
+        ):
+            SketchExtrusion.from_dict(document)
+
+        solved, report = solve_constraints(
+            SketchExtrusion.from_dict(coupled_midpoint_plate_document("90"))
+        )
+        self.assertEqual(solved["q0"], (Fraction(30), Fraction(20)))
+        self.assertEqual(solved["q1"], (Fraction(60), Fraction(40)))
+        self.assertEqual(report["rank"], report["variable_count"])
+
+    def test_chained_midpoints_keep_exact_finite_decimals(self) -> None:
+        document = coupled_midpoint_plate_document("100")
+        document["constraints"][7] = midpoint("c15", "p0", "p2", "q0")
+        document["constraints"][8] = midpoint("c16", "q0", "p2", "q1")
+        document["constraints"][2]["distance"] = length("100.002")
+
+        _, report = solve_constraints(SketchExtrusion.from_dict(document))
+
+        centres = {
+            item["point_id"]: (item["x"], item["y"])
+            for item in report["solved_points_mm"]
+            if item["point_id"] in {"q0", "q1"}
+        }
+        self.assertEqual(centres, {"q0": ("50.001", "30"), "q1": ("75.0015", "45")})
+
+    def test_cli_reports_nonterminating_midpoint_solution_as_input_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "cyclic.json"
+            input_path.write_text(
+                dumps_pretty(coupled_midpoint_plate_document("100")),
+                encoding="utf-8",
+                newline="\n",
+            )
+            output_dir = Path(directory) / "out"
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                status = cli_main(
+                    ["sketch", "compile", str(input_path), "--output-dir", str(output_dir)]
+                )
+
+            self.assertEqual(status, 2)
+            self.assertIn("q0.x = 100/3 mm", stderr.getvalue())
+            self.assertIn("coupled midpoint constraints: c15, c16", stderr.getvalue())
+            self.assertFalse(output_dir.exists())
 
     def test_midpoint_centre_clearance_tracks_endpoint_perturbation(self) -> None:
         document = midpoint_sketch_document()
